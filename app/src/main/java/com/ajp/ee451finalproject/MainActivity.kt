@@ -17,6 +17,7 @@ class MainActivity : AppCompatActivity() {
 
         // Example of a call to a native method
         binding.sampleText.text = stringFromJNI()
+        vulkanHello()
     }
 
     /**
@@ -24,6 +25,8 @@ class MainActivity : AppCompatActivity() {
      * which is packaged with this application.
      */
     external fun stringFromJNI(): String
+
+    external fun vulkanHello()
 
     companion object {
         // Used to load the 'ee451finalproject' library on application startup.
