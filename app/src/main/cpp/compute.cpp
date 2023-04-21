@@ -4,10 +4,11 @@
 #include <sstream>
 #include <vector>
 #include <vulkan/vulkan.h>
+#include <ctime>
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_ajp_ee451finalproject_MainActivity_vulkanHello(JNIEnv *env, jobject thiz) {
+Java_com_ajp_ee451finalproject_EdgeDetectionActivity_vulkanHello(JNIEnv *env, jobject thiz) {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Hello Triangle";
@@ -117,14 +118,25 @@ struct PixelDirection scanCounterClockwise(const jbyte* imageBuffer, jint width,
     }
 }
 
-jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<Pixel>>& edgeList) {
+jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<Pixel>>& edgeList, double time) {
+    jclass edgeDetectionResultClass = env->FindClass("com/ajp/ee451finalproject/EdgeDetectionActivity$EdgeDetectionResult");
+    if(edgeDetectionResultClass == nullptr) {
+        return nullptr;
+    }
+
     jclass vectorClass = env->FindClass("java/util/Vector");
     if(vectorClass == nullptr) {
         return nullptr;
     }
 
-    jclass pixelClass = env->FindClass("com/ajp/ee451finalproject/MainActivity$Pixel");
+    jclass pixelClass = env->FindClass("com/ajp/ee451finalproject/EdgeDetectionActivity$Pixel");
     if(pixelClass == nullptr) {
+        return nullptr;
+    }
+
+    jmethodID edgeDetectionResultConstructorID = env->GetMethodID(edgeDetectionResultClass, "<init>",
+                                                                  "(Ljava/util/Vector;D)V");
+    if(edgeDetectionResultConstructorID == nullptr) {
         return nullptr;
     }
 
@@ -173,19 +185,24 @@ jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<P
 
     }
 
+    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, time);
+
+    env->DeleteLocalRef(edgeDetectionResultClass);
     env->DeleteLocalRef(vectorClass);
     env->DeleteLocalRef(pixelClass);
 
-    return outerVector;
+    return result;
 }
 
 extern "C"
 JNIEXPORT jobject JNICALL
-Java_com_ajp_ee451finalproject_MainActivity_suzukiEdgeFind(JNIEnv *env, jobject thiz,
-                                                           jbyteArray image, jint width,
-                                                           jint height) {
+Java_com_ajp_ee451finalproject_EdgeDetectionActivity_suzukiEdgeFind(JNIEnv *env, jobject thiz,
+                                                                    jbyteArray image, jint width,
+                                                                    jint height) {
     // Image array is in row major order, with 0 representing black and 1 representing white
     jbyte* imageBuffer = env->GetByteArrayElements(image, nullptr);
+    struct timespec startTime{};
+    clock_gettime(CLOCK_REALTIME, &startTime);
     int numberOfBorders = 1;
     std::vector<std::vector<Pixel>> edgeList;
     // Perform a raster scan of the entire image.
@@ -235,7 +252,10 @@ Java_com_ajp_ee451finalproject_MainActivity_suzukiEdgeFind(JNIEnv *env, jobject 
             }
         }
     }
+    struct timespec endTime{};
+    clock_gettime(CLOCK_REALTIME, &endTime);
     env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
-    jobject retVal = getJavaEdgeListFromEdgeList(env, edgeList);
+    double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
+    jobject retVal = getJavaEdgeListFromEdgeList(env, edgeList, timeMillis);
     return retVal;
 }

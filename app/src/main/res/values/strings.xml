@@ -1,4 +1,19 @@
 <resources>
     <string name="app_name">EE451FinalProject</string>
     <string name="image_description">The binary edges of the provided image</string>
+    <string name="aruco">aruco.png</string>
+    <string name="big_dots">bigDots.png</string>
+    <string name="diamonds">diamonds.png</string>
+    <string name="direction">direction.png</string>
+    <string name="donut">donut.png</string>
+    <string name="dots">dots.png</string>
+    <string name="input">input.png</string>
+    <string name="mesh">mesh.png</string>
+    <string name="qr">qr.png</string>
+    <string name="qr_tilt">qrTilt.png</string>
+    <string name="small_edges">smallEdges.png</string>
+    <string name="square">square.png</string>
+    <string name="tic_tac_toe">ticTacToe.png</string>
+    <string name="waffle">waffle.png</string>
+    <string name="white">white.png</string>
 </resources>
