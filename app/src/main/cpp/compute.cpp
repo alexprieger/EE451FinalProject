@@ -2,15 +2,8 @@
 #include <android/log.h>
 #include <string>
 #include <sstream>
+#include <vector>
 #include <vulkan/vulkan.h>
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_ajp_ee451finalproject_MainActivity_stringFromJNI(
-        JNIEnv* env,
-        jobject /* this */) {
-    std::string hello = "Hello from C++";
-    return env->NewStringUTF(hello.c_str());
-}
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -40,9 +33,13 @@ enum Direction {
     down = 3
 };
 
-struct element {
+struct Pixel {
     int row;
     int col;
+};
+
+struct PixelDirection {
+    struct Pixel pixel;
     Direction direction;
 };
 
@@ -55,28 +52,30 @@ Direction nextCounterClockWiseDirection(Direction startDirection) {
     return static_cast<Direction>((startDirection + 3) % 4);
 }
 
-struct element scanClockwise(const jbyte* imageBuffer, jint width, int row, int col, Direction startDirection) {
+// Returns the next 1-pixel clockwise from startDirection and its direction relative to the center pixel,
+// or {0, 0} if there is no such 1-pixel
+struct PixelDirection scanClockwise(const jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection) {
     Direction nextDirection = nextClockWiseDirection(startDirection);
     while (nextDirection != startDirection) {
         switch (nextDirection) {
             case left:
-                if (imageBuffer[row * width + col - 1] != 0) {
-                    return {row, col - 1, left};
+                if (imageBuffer[centerPixel.row * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row, centerPixel.col - 1}, left};
                 }
                 break;
             case up:
-                if (imageBuffer[(row - 1) * width + col] != 0) {
-                    return {row - 1, col, up};
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col}, up};
                 }
                 break;
             case right:
-                if (imageBuffer[row * width + col + 1] != 0) {
-                    return {row, col + 1, right};
+                if (imageBuffer[centerPixel.row * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row, centerPixel.col + 1}, right};
                 }
                 break;
             case down:
-                if (imageBuffer[(row + 1) * width + col] != 0) {
-                    return {row + 1, col, down};
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col}, down};
                 }
                 break;
         }
@@ -85,31 +84,32 @@ struct element scanClockwise(const jbyte* imageBuffer, jint width, int row, int 
     return {0, 0}; // No pixel found: (0, 0) cannot possibly be a neighbor of a 1-pixel
 }
 
-struct element scanCounterClockwise(const jbyte* imageBuffer, jint width, int row, int col, Direction startDirection, bool& isBorderingToRight) {
+// Returns the next 1-pixel counterclockwise from startDirection and the relative direction to the center pixel
+struct PixelDirection scanCounterClockwise(const jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection, bool& isBorderingToRight) {
     isBorderingToRight = false;
     Direction nextDirection = nextCounterClockWiseDirection(startDirection);
     while (true) { // One of these is guaranteed to be hit within four tries
         switch (nextDirection) {
             case left:
-                if (imageBuffer[row * width + col - 1] != 0) {
-                    return {row, col - 1, right};
+                if (imageBuffer[centerPixel.row * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row, centerPixel.col - 1}, right};
                 }
                 break;
             case up:
-                if (imageBuffer[(row - 1) * width + col] != 0) {
-                    return {row - 1, col, down};
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col}, down};
                 }
                 break;
             case right:
-                if (imageBuffer[row * width + col + 1] != 0) {
-                    return {row, col + 1, left};
+                if (imageBuffer[centerPixel.row * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row, centerPixel.col + 1}, left};
                 } else {
                     isBorderingToRight = true;
                 }
                 break;
             case down:
-                if (imageBuffer[(row + 1) * width + col] != 0) {
-                    return {row + 1, col, up};
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col}, up};
                 }
                 break;
         }
@@ -117,20 +117,83 @@ struct element scanCounterClockwise(const jbyte* imageBuffer, jint width, int ro
     }
 }
 
+jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<Pixel>>& edgeList) {
+    jclass vectorClass = env->FindClass("java/util/Vector");
+    if(vectorClass == nullptr) {
+        return nullptr;
+    }
+
+    jclass pixelClass = env->FindClass("com/ajp/ee451finalproject/MainActivity$Pixel");
+    if(pixelClass == nullptr) {
+        return nullptr;
+    }
+
+    jmethodID vectorConstructorID = env->GetMethodID(
+            vectorClass, "<init>", "()V");
+    if(vectorConstructorID == nullptr) {
+        return nullptr;
+    }
+
+    jmethodID addMethodID = env->GetMethodID(
+            vectorClass, "add", "(Ljava/lang/Object;)Z" );
+    if(addMethodID == nullptr) {
+        return nullptr;
+    }
+
+    jmethodID pixelConstructorID = env->GetMethodID(pixelClass, "<init>", "(II)V");
+    if(pixelConstructorID == nullptr) {
+        return nullptr;
+    }
+
+    // Outer vector
+    jobject outerVector = env->NewObject(vectorClass, vectorConstructorID);
+    if(outerVector == nullptr) {
+        return nullptr;
+    }
+
+    for(auto& edge : edgeList) {
+
+        // Inner vector
+        jobject innerVector = env->NewObject(vectorClass, vectorConstructorID);
+        if(innerVector == nullptr) {
+            return nullptr;
+        }
+
+        for(auto& pixel : edge) {
+            // Now, we have object created by Pixel(i, i)
+            jobject pixelValue = env->NewObject(pixelClass, pixelConstructorID, pixel.row, pixel.col);
+            if(pixelValue == nullptr) {
+                return nullptr;
+            }
+
+            env->CallBooleanMethod(innerVector, addMethodID, pixelValue);
+        }
+
+        env->CallBooleanMethod(outerVector, addMethodID, innerVector);
+
+    }
+
+    env->DeleteLocalRef(vectorClass);
+    env->DeleteLocalRef(pixelClass);
+
+    return outerVector;
+}
+
 extern "C"
-JNIEXPORT void JNICALL
-Java_com_ajp_ee451finalproject_MainActivity_processImageBitmap(JNIEnv *env, jobject thiz,
-                                                               jbyteArray image, jint width,
-                                                               jint height) {
+JNIEXPORT jobject JNICALL
+Java_com_ajp_ee451finalproject_MainActivity_suzukiEdgeFind(JNIEnv *env, jobject thiz,
+                                                           jbyteArray image, jint width,
+                                                           jint height) {
     // Image array is in row major order, with 0 representing black and 1 representing white
     jbyte* imageBuffer = env->GetByteArrayElements(image, nullptr);
     int numberOfBorders = 1;
+    std::vector<std::vector<Pixel>> edgeList;
     // Perform a raster scan of the entire image.
     // We do not iterate over the (entirely black) frame, which conveniently avoids wraparound issues
     for (int row = 1; row < height - 1; row++) {
         for (int col = 1; col < width - 1; col++) {
-            struct element startPixel = {row, col};
-            struct element zeroPixel{};
+            struct Pixel startPixel = {row, col};
+            struct PixelDirection zeroPixel{};
             if (imageBuffer[row * width + col] == 1 && imageBuffer[row * width + col - 1] == 0) {
                 zeroPixel = {row, col - 1, left};
             } else if (imageBuffer[row * width + col] >= 1 && imageBuffer[row * width + col + 1] == 0) {
@@ -139,41 +202,40 @@ Java_com_ajp_ee451finalproject_MainActivity_processImageBitmap(JNIEnv *env, jobj
                 continue;
             }
             numberOfBorders++;
+            edgeList.emplace_back();
             // Border following initialization: find the first two pixels
-            struct element startPrevPixel = scanClockwise(imageBuffer, width, row, col, zeroPixel.direction);
+            struct PixelDirection retValue = scanClockwise(imageBuffer, width, startPixel, zeroPixel.direction);
+            // Direction, once initialized, always points towards previous pixel
+            struct PixelDirection currentPixel = {startPixel};
+            currentPixel.direction = retValue.direction;
+            struct Pixel startPrevPixel = retValue.pixel;
             if (startPrevPixel.row == 0 && startPrevPixel.col == 0) {
+                // It's just a single isolated pixel, we're already done.
+                edgeList.back().push_back(currentPixel.pixel);
                 continue;
             }
-            struct element currentPixel = startPixel;
-            currentPixel.direction = startPrevPixel.direction;
-            struct element prevPixel = startPrevPixel;
             // Now following a border
             while (true) {
+                edgeList.back().push_back(currentPixel.pixel);
                 bool isBorderingToRight;
-                struct element nextPixel = scanCounterClockwise(imageBuffer, width, currentPixel.row, currentPixel.col, currentPixel.direction, isBorderingToRight);
+                struct PixelDirection nextPixel = scanCounterClockwise(imageBuffer, width, currentPixel.pixel, currentPixel.direction, isBorderingToRight);
                 if (isBorderingToRight) {
                     // We need to specially mark the pixel if it's the border we're currently following
                     // faces to the right, to prevent us from accidentally following it again assuming it's a hole border
-                    imageBuffer[currentPixel.row * width + currentPixel.col] = -numberOfBorders;
-                } else if (imageBuffer[currentPixel.row * width + currentPixel.col] == 1) {
-                    imageBuffer[currentPixel.row * width + currentPixel.col] = numberOfBorders;
+                    imageBuffer[currentPixel.pixel.row * width + currentPixel.pixel.col] = -1;
+                } else if (imageBuffer[currentPixel.pixel.row * width + currentPixel.pixel.col] == 1) {
+                    imageBuffer[currentPixel.pixel.row * width + currentPixel.pixel.col] = 2;
                 }
                 // If we're back at the starting point, we've found the entire border
-                if (nextPixel.row == startPixel.row && nextPixel.col == startPixel.col
-                    && currentPixel.row == startPrevPixel.row && currentPixel.col == startPrevPixel.col) {
+                if (nextPixel.pixel.row == startPixel.row && nextPixel.pixel.col == startPixel.col
+                    && currentPixel.pixel.row == startPrevPixel.row && currentPixel.pixel.col == startPrevPixel.col) {
                     break;
                 }
-                prevPixel = currentPixel;
                 currentPixel = nextPixel;
             }
         }
     }
-    for (int row = 1; row < height - 1; row++) {
-        std::stringstream rowString;
-        for (int col = 1; col < width - 1; col++) {
-            rowString << static_cast<int>(imageBuffer[row * width + col]) << " ";
-        }
-        __android_log_print(ANDROID_LOG_INFO, "Alex", "%s", rowString.str().c_str());
-    }
     env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
+    jobject retVal = getJavaEdgeListFromEdgeList(env, edgeList);
+    return retVal;
 }

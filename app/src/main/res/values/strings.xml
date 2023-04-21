@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">EE451FinalProject</string>
+    <string name="image_description">The binary edges of the provided image</string>
 </resources>
