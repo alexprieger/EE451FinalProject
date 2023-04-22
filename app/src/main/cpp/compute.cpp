@@ -6,6 +6,9 @@
 #include <vulkan/vulkan.h>
 #include <ctime>
 
+// If defined, uses 8-connectivity instead of 4-connectivity
+#define CONNECTIVITY_8
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_ajp_ee451finalproject_EdgeDetectionActivity_vulkanHello(JNIEnv *env, jobject thiz) {
@@ -29,9 +32,15 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_vulkanHello(JNIEnv *env, jo
 
 enum Direction {
     left = 0,
-    up = 1,
-    right = 2,
-    down = 3
+    up = 2,
+    right = 4,
+    down = 6,
+#ifdef CONNECTIVITY_8
+    upleft = 1,
+    upright = 3,
+    downright = 5,
+    downleft = 7
+#endif
 };
 
 struct Pixel {
@@ -45,12 +54,26 @@ struct PixelDirection {
 };
 
 Direction nextClockWiseDirection(Direction startDirection) {
-    return static_cast<Direction>((startDirection + 1) % 4);
+    return static_cast<Direction>((startDirection +
+#ifdef CONNECTIVITY_8
+    1
+#endif
+#ifndef CONNECTIVITY_8
+    2
+#endif
+    ) % 8);
 }
 
 Direction nextCounterClockWiseDirection(Direction startDirection) {
     // Add 3 instead of subtracting 1 to avoid negative modulus weirdness
-    return static_cast<Direction>((startDirection + 3) % 4);
+    return static_cast<Direction>((startDirection +
+#ifdef CONNECTIVITY_8
+    7
+#endif
+#ifndef CONNECTIVITY_8
+    6
+#endif
+    ) % 8);
 }
 
 // Returns the next 1-pixel clockwise from startDirection and its direction relative to the center pixel,
@@ -79,6 +102,28 @@ struct PixelDirection scanClockwise(const jbyte* imageBuffer, jint width, Pixel 
                     return {{centerPixel.row + 1, centerPixel.col}, down};
                 }
                 break;
+#ifdef CONNECTIVITY_8
+            case upleft:
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col - 1}, upleft};
+                }
+                break;
+            case upright:
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col + 1}, upright};
+                }
+                break;
+            case downright:
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col + 1}, downright};
+                }
+                break;
+            case downleft:
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col - 1}, downleft};
+                }
+                break;
+#endif
         }
         nextDirection = nextClockWiseDirection(nextDirection);
     }
@@ -113,6 +158,28 @@ struct PixelDirection scanCounterClockwise(const jbyte* imageBuffer, jint width,
                     return {{centerPixel.row + 1, centerPixel.col}, up};
                 }
                 break;
+#ifdef CONNECTIVITY_8
+            case upleft:
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col - 1}, downright};
+                }
+                break;
+            case upright:
+                if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row - 1, centerPixel.col + 1}, downleft};
+                }
+                break;
+            case downright:
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col + 1] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col + 1}, upleft};
+                }
+                break;
+            case downleft:
+                if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col - 1] != 0) {
+                    return {{centerPixel.row + 1, centerPixel.col - 1}, upright};
+                }
+                break;
+#endif
         }
         nextDirection = nextCounterClockWiseDirection(nextDirection);
     }
