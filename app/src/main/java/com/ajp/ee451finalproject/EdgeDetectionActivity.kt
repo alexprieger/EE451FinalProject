@@ -9,6 +9,9 @@ import android.os.Bundle
 import com.ajp.ee451finalproject.databinding.ActivityEdgeDetectionBinding
 import java.io.BufferedInputStream
 import java.util.Vector
+import kotlin.math.ceil
+import kotlin.math.log2
+import kotlin.math.pow
 
 class EdgeDetectionActivity : AppCompatActivity() {
 
@@ -19,6 +22,8 @@ class EdgeDetectionActivity : AppCompatActivity() {
     private lateinit var binding: ActivityEdgeDetectionBinding
 
     private var imageFilePath: String? = null
+
+    private val useGarciaMolla = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,13 +42,16 @@ class EdgeDetectionActivity : AppCompatActivity() {
             val imageBitmap = BitmapFactory.decodeStream(imageStream)
             val imageWidth = imageBitmap.width + 2 // + 2 to add black frame
             val imageHeight = imageBitmap.height + 2
-            // Image array is in row major order, with 0 representing black and 1 representing white
-            val imageArray = ByteArray(imageWidth * imageHeight) { i ->
-                val row = i / imageWidth
-                val col = i % imageWidth
-                if (row == 0 || row == imageHeight - 1 || col == 0 || col == imageWidth - 1) {
-                    // If on the frame, make black
 
+            val imageWidthPadded = 2.0.pow(ceil(log2(imageWidth.toDouble()))).toInt()
+            val imageHeightPadded = 2.0.pow(ceil(log2(imageHeight.toDouble()))).toInt()
+
+            // Image array is in row major order, with 0 representing black and 1 representing white
+            val imageArray = ByteArray(imageWidthPadded * imageHeightPadded) { i ->
+                val row = i / imageWidthPadded
+                val col = i % imageWidthPadded
+                if (row == 0 || row > imageBitmap.height || col == 0 || col > imageBitmap.width) {
+                    // If on the frame or in the padding, make black
                     0
                 } else {
                     // Binarize by converting to black and white and thresholding at half (127)
@@ -57,7 +65,11 @@ class EdgeDetectionActivity : AppCompatActivity() {
                     }
                 }
             }
-            val edgeResult = suzukiEdgeFind(imageArray, imageWidth, imageHeight)
+            val edgeResult = if (useGarciaMolla) {
+                garciaMollaEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
+            } else {
+                suzukiEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
+            }
             val edgeList = edgeResult.edges
             val edgesImageArray = IntArray(imageBitmap.width * imageBitmap.height) {
                 Color.BLACK
@@ -80,6 +92,8 @@ class EdgeDetectionActivity : AppCompatActivity() {
     external fun vulkanHello()
 
     external fun suzukiEdgeFind(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
+
+    external fun garciaMollaEdgeFind(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
 
     companion object {
         // Used to load the 'ee451finalproject' library on application startup.
