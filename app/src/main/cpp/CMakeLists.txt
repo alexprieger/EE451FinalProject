@@ -21,7 +21,10 @@ add_library( # Sets the name of the library.
         SHARED
 
         # Provides a relative path to your source file(s).
-        compute.cpp)
+        suzuki.cpp
+        garciamolla.cpp
+        common.cpp
+        common.h)
 
 
 # Searches for a specified prebuilt library and stores the path as a
