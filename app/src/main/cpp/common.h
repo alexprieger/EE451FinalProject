@@ -28,6 +28,3 @@ struct PixelDirection {
 
 Direction nextClockWiseDirection(Direction startDirection);
 Direction nextCounterClockWiseDirection(Direction startDirection);
-struct PixelDirection scanClockwise(const jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection);
-struct PixelDirection scanCounterClockwise(const jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection, bool& isBorderingToRight);
-jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<Pixel>>& edgeList, double time);
