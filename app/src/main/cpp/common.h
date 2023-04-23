@@ -19,6 +19,10 @@ enum Direction {
 struct Pixel {
     int row;
     int col;
+
+    bool operator==(struct Pixel otherPixel) const {
+        return row == otherPixel.row && col == otherPixel.col;
+    }
 };
 
 struct PixelDirection {
