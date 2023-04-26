@@ -305,35 +305,44 @@ BorderList joinBorders(BorderList list1, BorderList list2) {
         }
     }
     // Joining borders may have resulted in new borders that can be joined. Check them all
-    std::queue<std::list<std::list<Triad> *>::iterator> bordersToCheck; // queue or stack doesn't matter here, we just need to check them all
-    for (auto borderIter = list1.openBorders->begin(); borderIter != list1.openBorders->end(); borderIter++) {
-        bordersToCheck.push(borderIter);
-    }
-    while (!bordersToCheck.empty()) {
-        auto borderToCheck = bordersToCheck.front();
-        bordersToCheck.pop();
-        for (auto borderToCheckAgainstIter = list1.openBorders->begin(); borderToCheckAgainstIter != list1.openBorders->end(); borderToCheckAgainstIter++) {
-            std::list<std::list<Triad> *>::iterator* fromBorder = nullptr;
-            std::list<std::list<Triad> *>::iterator* toBorder = nullptr;
+    std::vector<std::vector<std::list<std::list<Triad> *>::iterator>> borderStates;
+    for (auto borderToCheck = list1.openBorders->begin(); borderToCheck != list1.openBorders->end();) {
+        borderStates.emplace_back();
+        for (auto border = list1.openBorders->begin(); border != list1.openBorders->end(); border++) {
+            borderStates.back().push_back(border);
+        }
+        bool needToRecheckBorder = false;
+        for (auto borderToCheckAgainstIter = std::next(borderToCheck); borderToCheckAgainstIter != list1.openBorders->end(); borderToCheckAgainstIter++) {
             if ((*borderToCheck)->back().pointsTo((*borderToCheckAgainstIter)->front())) {
-                fromBorder = &borderToCheck;
-                toBorder = &borderToCheckAgainstIter;
-            } else if ((*borderToCheckAgainstIter)->back().pointsTo((*borderToCheck)->front())) {
-                fromBorder = &borderToCheckAgainstIter;
-                toBorder = &borderToCheck;
-            }
-            if (fromBorder != nullptr) {
-                (**fromBorder)->splice((**fromBorder)->end(), ***toBorder);
-                delete **toBorder;
-                list1.openBorders->erase(*toBorder);
-                if ((**fromBorder)->back().pointsTo((**fromBorder)->front())) {
-                    (**fromBorder)->push_back((**fromBorder)->front()); // Close the border
-                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), *fromBorder);
-                } else {
-                    bordersToCheck.push(*fromBorder);
+                (*borderToCheck)->splice((*borderToCheck)->end(), **borderToCheckAgainstIter);
+                delete *borderToCheckAgainstIter;
+                list1.openBorders->erase(borderToCheckAgainstIter);
+                if ((*borderToCheck)->back().pointsTo((*borderToCheck)->front())) {
+                    auto oldBorderToCheck = borderToCheck;
+                    oldBorderToCheck++;
+                    (*borderToCheck)->push_back((*borderToCheck)->front()); // Close the border
+                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), borderToCheck);
+                    borderToCheck = oldBorderToCheck;
                 }
+                needToRecheckBorder = true;
+                break;
+            } else if ((*borderToCheckAgainstIter)->back().pointsTo((*borderToCheck)->front())) {
+                (*borderToCheck)->splice((*borderToCheck)->begin(), **borderToCheckAgainstIter);
+                delete *borderToCheckAgainstIter;
+                list1.openBorders->erase(borderToCheckAgainstIter);
+                if ((*borderToCheck)->back().pointsTo((*borderToCheck)->front())) {
+                    auto oldBorderToCheck = borderToCheck;
+                    oldBorderToCheck++;
+                    (*borderToCheck)->push_back((*borderToCheck)->front()); // Close the border
+                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), borderToCheck);
+                    borderToCheck = oldBorderToCheck;
+                }
+                needToRecheckBorder = true;
                 break;
             }
+        }
+        if (!needToRecheckBorder) {
+            borderToCheck++;
         }
     }
     return list1;
@@ -443,6 +452,100 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFind(JNIEnv 
     struct timespec startTime{};
     clock_gettime(CLOCK_REALTIME, &startTime);
     BorderList borderList = findBordersInRectangle(imageBuffer, width, 0, height, 0, width);
+    struct timespec endTime{};
+    clock_gettime(CLOCK_REALTIME, &endTime);
+    double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
+    assert(borderList.openBorders->empty());
+    env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
+    jobject retVal = getJavaEdgeListFromBorderList(env, borderList, timeMillis);
+    for (auto border : *(borderList.closedBorders)) {
+        delete border;
+    }
+    for (auto border : *(borderList.openBorders)) {
+        delete border;
+    }
+    delete borderList.closedBorders;
+    delete borderList.openBorders;
+    return retVal;
+}
+
+struct PthreadData {
+    jbyte* imageBuffer;
+    jint width;
+    int startRow;
+    int endRow;
+    int startCol;
+    int endCol;
+    int nThreads;
+    BorderList result;
+};
+
+void* findBordersInRectangleParallel(void* pthreadData) {
+    auto* data = (PthreadData*)pthreadData;
+    jbyte* imageBuffer = data->imageBuffer;
+    jint width = data->width;
+    int startRow = data->startRow;
+    int endRow  = data->endRow;
+    int startCol = data->startCol;
+    int endCol = data->endCol;
+    int nThreads = data->nThreads;
+    if (nThreads == 1) {
+        data->result = findBordersInRectangle(imageBuffer, width, startRow, endRow, startCol, endCol);
+        return nullptr;
+    }
+    if (endRow - startRow <= 4 && endCol - startCol <= 4) {
+        data->result = littleSuzuki(imageBuffer, width, startRow, endRow, startCol, endCol);
+        return nullptr;
+    }
+    // Process block [startRow, endRow) × [startCol, endCol)
+    if (endRow - startRow >= endCol - startCol) {
+        // More rows than columns, so split vertically
+        pthread_t thread1, thread2;
+        struct PthreadData firstData = *data;
+        struct PthreadData secondData = *data;
+        firstData.endRow = (startRow + endRow) / 2;
+        firstData.nThreads /= 2;
+        secondData.startRow = (startRow + endRow) / 2;
+        secondData.nThreads /= 2;
+        pthread_create(&thread1, nullptr, findBordersInRectangleParallel, &firstData);
+        pthread_create(&thread2, nullptr, findBordersInRectangleParallel, &secondData);
+        pthread_join(thread1, nullptr);
+        pthread_join(thread2, nullptr);
+        data->result = joinBorders(firstData.result, secondData.result);
+        return nullptr;
+    }
+    // More columns than rows, so split horizontally
+    pthread_t thread1, thread2;
+    struct PthreadData firstData = *data;
+    struct PthreadData secondData = *data;
+    firstData.endCol = (startCol + endCol) / 2;
+    firstData.nThreads /= 2;
+    secondData.startCol = (startCol + endCol) / 2;
+    secondData.nThreads /= 2;
+    pthread_create(&thread1, nullptr, findBordersInRectangleParallel, &firstData);
+    pthread_create(&thread2, nullptr, findBordersInRectangleParallel, &secondData);
+    pthread_join(thread1, nullptr);
+    pthread_join(thread2, nullptr);
+    data->result = joinBorders(firstData.result, secondData.result);
+    return nullptr;
+}
+
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFindParallel(JNIEnv *env,
+                                                                                 jobject thiz,
+                                                                                 jbyteArray image,
+                                                                                 jint width,
+                                                                                 jint height,
+                                                                                 jint nThreads) {
+    jbyte* imageBuffer = env->GetByteArrayElements(image, nullptr);
+    struct timespec startTime{};
+    clock_gettime(CLOCK_REALTIME, &startTime);
+    pthread_t thread;
+    struct PthreadData data { imageBuffer, width, 0, height, 0, width, nThreads };
+    pthread_create(&thread, nullptr, findBordersInRectangleParallel, &data);
+    pthread_join(thread, nullptr);
+    BorderList &borderList = data.result;
     struct timespec endTime{};
     clock_gettime(CLOCK_REALTIME, &endTime);
     double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
