@@ -3,6 +3,7 @@
     <string name="image_description">The binary edges of the provided image</string>
     <string name="aruco">aruco.png</string>
     <string name="big_dots">bigDots.png</string>
+    <string name="big_image">bigImage.png</string>
     <string name="careful_edges">carefulEdges.png</string>
     <string name="diamonds">diamonds.png</string>
     <string name="direction">direction.png</string>

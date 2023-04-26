@@ -23,7 +23,7 @@ class EdgeDetectionActivity : AppCompatActivity() {
 
     private var imageFilePath: String? = null
 
-    private val useGarciaMolla = false
+    private val useGarciaMolla = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,22 +66,20 @@ class EdgeDetectionActivity : AppCompatActivity() {
                 }
             }
             val edgeResult = if (useGarciaMolla) {
-                garciaMollaEdgeFindParallel(imageArray, imageWidthPadded, imageHeightPadded, 256)
+                garciaMollaEdgeFindParallel(imageArray, imageWidthPadded, imageHeightPadded, 8)
             } else {
                 suzukiEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
             }
             val edgeList = edgeResult.edges
-            val edgesImageArray = IntArray(imageBitmap.width * imageBitmap.height) {
-                Color.BLACK
-            }
+            val edgeimageBitmap = imageBitmap.copy(Bitmap.Config.ARGB_8888, true)
+            edgeimageBitmap.eraseColor(Color.BLACK)
             for (edge in edgeList) {
                 for (pixel in edge) {
                     // - 1s to subtract off the frame
-                    edgesImageArray[(pixel.row - 1) * imageBitmap.width + (pixel.col - 1)] = Color.WHITE
+                    edgeimageBitmap.setPixel(pixel.row - 1, pixel.col - 1, Color.WHITE)
                 }
             }
-            val edgeImageBitmap = Bitmap.createBitmap(edgesImageArray, imageBitmap.width, imageBitmap.height, Bitmap.Config.ARGB_8888)
-            val scaledEdgeImageBitmap = Bitmap.createScaledBitmap(edgeImageBitmap, binding.image.width, binding.image.height, false)
+            val scaledEdgeImageBitmap = Bitmap.createScaledBitmap(edgeimageBitmap, binding.image.width, binding.image.height, false)
             binding.image.setImageBitmap(scaledEdgeImageBitmap)
 
             binding.edgeCount.text = "Edge count: ${edgeList.size}"
