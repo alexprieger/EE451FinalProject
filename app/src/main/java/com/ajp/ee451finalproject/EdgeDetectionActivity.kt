@@ -66,7 +66,7 @@ class EdgeDetectionActivity : AppCompatActivity() {
                 }
             }
             val edgeResult = if (useGarciaMolla) {
-                garciaMollaEdgeFindParallel(imageArray, imageWidthPadded, imageHeightPadded, 8)
+                garciaMollaEdgeFindEfficient(imageArray, imageWidthPadded, imageHeightPadded)
             } else {
                 suzukiEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
             }
@@ -76,7 +76,7 @@ class EdgeDetectionActivity : AppCompatActivity() {
             for (edge in edgeList) {
                 for (pixel in edge) {
                     // - 1s to subtract off the frame
-                    edgeimageBitmap.setPixel(pixel.row - 1, pixel.col - 1, Color.WHITE)
+                    edgeimageBitmap.setPixel( pixel.col - 1,pixel.row - 1, Color.WHITE)
                 }
             }
             val scaledEdgeImageBitmap = Bitmap.createScaledBitmap(edgeimageBitmap, binding.image.width, binding.image.height, false)
@@ -94,6 +94,8 @@ class EdgeDetectionActivity : AppCompatActivity() {
     external fun garciaMollaEdgeFind(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
 
     external fun garciaMollaEdgeFindParallel(image: ByteArray, width: Int, height: Int, nThreads: Int): EdgeDetectionResult
+
+    external fun garciaMollaEdgeFindEfficient(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
 
     companion object {
         // Used to load the 'ee451finalproject' library on application startup.
