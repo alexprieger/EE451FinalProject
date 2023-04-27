@@ -22,8 +22,7 @@ add_library( # Sets the name of the library.
 
         # Provides a relative path to your source file(s).
         suzuki.cpp
-        # garciamolla.cpp
-        garciamollaefficient.cpp
+        garciamolla.cpp
         common.cpp
         common.h)
 
