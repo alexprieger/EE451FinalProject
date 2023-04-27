@@ -28,124 +28,103 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_vulkanHello(JNIEnv *env, jo
     VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
 }
 
+struct Border;
+
 struct Triad {
     Pixel currentPixel;
-    PixelDirection prevPixel; // Direction points towards currentPixel
-    PixelDirection nextPixel; // Direction points towards currentPixel
+    // The "general" pointers point to the FIRST (left) triad in the set of other-pixel triads
+    // Initialized by connectTriads
+    struct Triad* prevPixelGeneral;
+    // If isValid is true and nextPixelGeneral is a null pointer, this pixel is isolated
+    struct Triad* nextPixelGeneral; // Direction points towards currentPixel
+    // The "general" pointers point to the next triad in the border
+    // Initialized by getStartBorders
+    struct Triad* prevPixelSpecific;
+    struct Triad* nextPixelSpecific;
+    std::list<Border>::iterator border;
+    // False if the corresponding cross pixel is not black, or if this triad would be duplicated by another
+    bool isValid;
+    bool hasBeenFollowed;
 
-    bool operator==(struct Triad otherTriad) const {
-        // Two triads are equal if they point in the same direction, because distinct borders never converge
-        return currentPixel == otherTriad.currentPixel
-               && nextPixel.direction == otherTriad.nextPixel.direction;
-    }
-
-    bool pointsTo(struct Triad otherTriad) const {
-        return nextPixel.pixel == otherTriad.currentPixel
-               && otherTriad.prevPixel.pixel == currentPixel;
+    bool pointsTo(struct Triad* otherTriad) const {
+        return nextPixelSpecific == otherTriad && otherTriad->prevPixelSpecific == this;
     }
 };
 
-const jbyte LEFT_MASK = 0x02;
-const jbyte UP_MASK = 0x04;
-const jbyte RIGHT_MASK = 0x08;
-const jbyte DOWN_MASK = 0x10;
+struct Border {
+    struct Triad* startTriad;
+    struct Triad* endTriad;
+};
 
-Direction reverseDirection(Direction initialDirection) {
-    switch(initialDirection) {
-        case left:
-            return right;
-        case up:
-            return down;
-        case right:
-            return left;
-        case down:
-            return up;
-#ifdef CONNECTIVITY_8
-        case upleft:
-            return downright;
-        case upright:
-            return downleft;
-        case downright:
-            return upleft;
-        case downleft:
-            return upright;
-#endif
-    }
-}
+struct BorderList {
+    std::list<Border>* closedBorders;
+    std::list<Border>* openBorders;
+};
 
-bool isBorderClosed(std::list<Triad>* border) {
-    return
-        // Border is just a single pixel
-            (border->size() == 1 && border->front().nextPixel.pixel.row == 0)
-            // ...or the border is a closed loop
-            || (border->size() > 1
-                && border->front() == border->back());
-}
+#define CROSS_LEFT 0
+#define CROSS_UP 1
+#define CROSS_RIGHT 2
+#define CROSS_DOWN 3
 
-// Returns the next 1-pixel clockwise or counterclockwise from startDirection and its direction
-// relative to the center pixel, or {0, 0} if there is no such 1-pixel
-struct PixelDirection scan(jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection, bool scanClockwise) {
+#define LEFT_MASK 0x02
+#define UP_MASK 0x04
+#define RIGHT_MASK 0x08
+#define DOWN_MASK 0x10
+
+// Returns the next 1-pixel clockwise or counterclockwise from startDirection, or {0, 0} if there is no such 1-pixel
+struct Pixel scan(jbyte* imageBuffer, jint width, Pixel centerPixel, Direction startDirection, bool scanClockwise) {
     Direction nextDirection;
     if (scanClockwise) {
         nextDirection = nextClockWiseDirection(startDirection);
     } else {
         nextDirection = nextCounterClockWiseDirection(startDirection);
     }
-    for (int i = 0; i <
-                    #ifdef CONNECTIVITY_8
-                    8
-#endif
-#ifndef CONNECTIVITY_8
-        4
-#endif
-            ; i++) {
+    for (int i = 0; i < 8; i++) {
         switch (nextDirection) {
             case left:
                 imageBuffer[centerPixel.row * width + centerPixel.col] |= LEFT_MASK;
                 if (imageBuffer[centerPixel.row * width + centerPixel.col - 1] != 0) {
-                    return {{centerPixel.row, centerPixel.col - 1}, right};
+                    return {centerPixel.row, centerPixel.col - 1};
                 }
                 break;
             case up:
                 imageBuffer[centerPixel.row * width + centerPixel.col] |= UP_MASK;
                 if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col] != 0) {
-                    return {{centerPixel.row - 1, centerPixel.col}, down};
+                    return {centerPixel.row - 1, centerPixel.col};
                 }
                 break;
             case right:
                 imageBuffer[centerPixel.row * width + centerPixel.col] |= RIGHT_MASK;
                 if (imageBuffer[centerPixel.row * width + centerPixel.col + 1] != 0) {
-                    return {{centerPixel.row, centerPixel.col + 1}, left};
+                    return {centerPixel.row, centerPixel.col + 1};
                 }
                 break;
             case down:
                 imageBuffer[centerPixel.row * width + centerPixel.col] |= DOWN_MASK;
                 if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col] != 0) {
-                    return {{centerPixel.row + 1, centerPixel.col}, up};
+                    return {centerPixel.row + 1, centerPixel.col};
                 }
                 break;
-#ifdef CONNECTIVITY_8
             case upleft:
                 if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col - 1] != 0) {
-                    return {{centerPixel.row - 1, centerPixel.col - 1}, downright};
+                    return {centerPixel.row - 1, centerPixel.col - 1};
                 }
                 break;
             case upright:
                 if (imageBuffer[(centerPixel.row - 1) * width + centerPixel.col + 1] != 0) {
-                    return {{centerPixel.row - 1, centerPixel.col + 1}, downleft};
+                    return {centerPixel.row - 1, centerPixel.col + 1};
                 }
                 break;
             case downright:
                 if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col + 1] != 0) {
-                    return {{centerPixel.row + 1, centerPixel.col + 1}, upleft};
+                    return {centerPixel.row + 1, centerPixel.col + 1};
                 }
                 break;
             case downleft:
                 if (imageBuffer[(centerPixel.row + 1) * width + centerPixel.col - 1] != 0) {
-                    return {{centerPixel.row + 1, centerPixel.col - 1}, upright};
+                    return {centerPixel.row + 1, centerPixel.col - 1};
                 }
                 break;
-#endif
         }
         if (scanClockwise) {
             nextDirection = nextClockWiseDirection(nextDirection);
@@ -156,202 +135,233 @@ struct PixelDirection scan(jbyte* imageBuffer, jint width, Pixel centerPixel, Di
     return {0, 0}; // No pixel found: (0, 0) cannot possibly be a 1-pixel
 }
 
-std::list<Triad>* followBorder(jbyte* imageBuffer, jint width, int startRow, int endRow, int startCol, int endCol, Triad startTriad) {
-    auto* border = new std::list<Triad>();
-    border->push_back(startTriad);
-    Triad currentTriad = startTriad;
-    // Follow border forward until we leave our segment or loop back around
-    while (currentTriad.nextPixel.pixel.row >= startRow && currentTriad.nextPixel.pixel.row < endRow
-           && currentTriad.nextPixel.pixel.col >= startCol && currentTriad.nextPixel.pixel.col < endCol) {
-        PixelDirection nextNextPixel = scan(imageBuffer, width, currentTriad.nextPixel.pixel, currentTriad.nextPixel.direction, false);
-        currentTriad = {currentTriad.nextPixel.pixel,
-                        {currentTriad.currentPixel,reverseDirection(currentTriad.nextPixel.direction)},
-                        nextNextPixel};
-        border->push_back(currentTriad);
-        if (currentTriad == startTriad) {
-            // Border is closed
-            return border;
+void connectTriads(Triad* triadBuffer, jbyte* imageBuffer, const int size) {
+    for (int currentPixelRow = 1; currentPixelRow < size - 1; currentPixelRow++) {
+        for (int currentPixelColumn = 1; currentPixelColumn < size - 1; currentPixelColumn++) {
+            if (imageBuffer[currentPixelRow * size + currentPixelColumn] == 0) {
+                // Ignore 0-pixels
+                continue;
+            }
+            Pixel currentPixel = {currentPixelRow, currentPixelColumn};
+            Triad *localPixelTriadBuffer = triadBuffer + currentPixelRow * size * 4 + currentPixelColumn * 4;
+            for (int i = 0; i < 4; i++) {
+                localPixelTriadBuffer[i].currentPixel = currentPixel;
+                localPixelTriadBuffer[i].hasBeenFollowed = false;
+            }
+            // Get left triad
+            if (imageBuffer[currentPixelRow * size + currentPixelColumn - 1] != 0) {
+                // No left triad
+                localPixelTriadBuffer[CROSS_LEFT].isValid = false;
+            } else {
+                Pixel leftTriadNext = scan(imageBuffer, size, currentPixel, left, false);
+                if (leftTriadNext == Pixel{0, 0}) {
+                    // Single, isolated pixel. Mark it as such
+                    localPixelTriadBuffer[CROSS_LEFT].isValid = true;
+                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = nullptr;
+                    localPixelTriadBuffer[CROSS_UP].isValid = false;
+                    localPixelTriadBuffer[CROSS_RIGHT].isValid = false;
+                    localPixelTriadBuffer[CROSS_DOWN].isValid = false;
+                    continue;
+                } else {
+                    localPixelTriadBuffer[CROSS_LEFT].isValid = true;
+                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = triadBuffer + leftTriadNext.row * size * 4 + leftTriadNext.col * 4;
+                    Pixel leftTriadPrev = scan(imageBuffer, size, currentPixel, left, true);
+                    localPixelTriadBuffer[CROSS_LEFT].prevPixelGeneral = triadBuffer + leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
+                }
+            }
+            // Get up triad
+            if (imageBuffer[(currentPixelRow - 1) * size + currentPixelColumn] != 0 || imageBuffer[currentPixelRow * size + currentPixelColumn] & UP_MASK) {
+                // No up triad, or else it's the same as the left triad
+                localPixelTriadBuffer[CROSS_UP].isValid = false;
+            } else {
+                Pixel upTriadNext = scan(imageBuffer, size, currentPixel, up, false);
+                // Note thta we don't need to check if it's an isolated pixel because we would have found that out in the left triad
+                localPixelTriadBuffer[CROSS_UP].isValid = true;
+                localPixelTriadBuffer[CROSS_UP].nextPixelGeneral = triadBuffer + upTriadNext.row * size * 4 + upTriadNext.col * 4;
+                Pixel leftTriadPrev = scan(imageBuffer, size, currentPixel, up, true);
+                localPixelTriadBuffer[CROSS_UP].prevPixelGeneral = triadBuffer + leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
+            }
+            // Get right triad
+            if (imageBuffer[currentPixelRow * size + currentPixelColumn + 1] != 0 || imageBuffer[currentPixelRow * size + currentPixelColumn] & RIGHT_MASK) {
+                // No right triad, or else it's the same as the left or up triad
+                localPixelTriadBuffer[CROSS_RIGHT].isValid = false;
+            } else {
+                Pixel rightTriadNext = scan(imageBuffer, size, currentPixel, right, false);
+                localPixelTriadBuffer[CROSS_RIGHT].isValid = true;
+                localPixelTriadBuffer[CROSS_RIGHT].nextPixelGeneral = triadBuffer + rightTriadNext.row * size * 4 + rightTriadNext.col * 4;
+                Pixel rightTriadPrev = scan(imageBuffer, size, currentPixel, right, true);
+                localPixelTriadBuffer[CROSS_RIGHT].prevPixelGeneral = triadBuffer + rightTriadPrev.row * size * 4 + rightTriadPrev.col * 4;
+            }
+            // Get down triad
+            if (imageBuffer[(currentPixelRow + 1) * size + currentPixelColumn] != 0 || imageBuffer[currentPixelRow * size + currentPixelColumn] & DOWN_MASK) {
+                // No down triad, or else it's the same as the left, up, or right triad
+                localPixelTriadBuffer[CROSS_DOWN].isValid = false;
+            } else {
+                Pixel downTriadNext = scan(imageBuffer, size, currentPixel, down, false);
+                localPixelTriadBuffer[CROSS_DOWN].isValid = true;
+                localPixelTriadBuffer[CROSS_DOWN].nextPixelGeneral = triadBuffer + downTriadNext.row * size * 4 + downTriadNext.col * 4;
+                Pixel downTriadPrev = scan(imageBuffer, size, currentPixel, down, true);
+                localPixelTriadBuffer[CROSS_DOWN].prevPixelGeneral = triadBuffer + downTriadPrev.row * size * 4 + downTriadPrev.col * 4;
+            }
         }
     }
-    // Follow border backward until we leave our segment or loop back around
-    currentTriad = startTriad;
-    while (currentTriad.prevPixel.pixel.row >= startRow && currentTriad.prevPixel.pixel.row < endRow
-           && currentTriad.prevPixel.pixel.col >= startCol && currentTriad.prevPixel.pixel.col < endCol) {
-        PixelDirection prevPrevPixel = scan(imageBuffer, width, currentTriad.prevPixel.pixel, currentTriad.prevPixel.direction, true);
-        currentTriad = {currentTriad.prevPixel.pixel,
-                        prevPrevPixel,
-                        {currentTriad.currentPixel, reverseDirection(currentTriad.prevPixel.direction)}};
-        border->push_front(currentTriad);
-        if (currentTriad == border->back()) {
-            // Border is closed
-            return border;
-        }
-    }
-    return border;
 }
 
-struct BorderList {
-    std::list<std::list<Triad> *>* closedBorders;
-    std::list<std::list<Triad> *>* openBorders;
-};
-
-bool checkTriad(jbyte* imageBuffer, jint width, int startRow, int endRow, int startCol, int endCol, int row, int col, BorderList edgeList, jbyte triadBitmask, Direction triadDirection) {
-    Pixel currentPixel = {row, col};
-    switch (triadDirection) {
-        case left:
-            if (imageBuffer[row * width + col - 1] != 0){
-                return false;
-            }
-            break;
-        case up:
-            if (imageBuffer[(row - 1) * width + col] != 0){
-                return false;
-            }
-            break;
-        case right:
-            if (imageBuffer[row * width + col + 1] != 0){
-                return false;
-            }
-            break;
-        case down:
-            if (imageBuffer[(row + 1) * width + col] != 0){
-                return false;
-            }
-            break;
-    }
-    if (!(imageBuffer[row * width + col] & triadBitmask)) {
-        imageBuffer[row * width + col] |= triadBitmask;
-        PixelDirection nextPixel = scan(imageBuffer, width, currentPixel, triadDirection, false);
-        if (nextPixel.pixel.row == 0 && nextPixel.pixel.col == 0) {
-            // No other pixel found, pixel is isolated
-            edgeList.closedBorders->push_back(new std::list<Triad>());
-            edgeList.closedBorders->back()->push_back({currentPixel});
-            return true;
-        }
-        PixelDirection prevPixel = scan(imageBuffer, width, currentPixel, triadDirection, true);
-        Triad pixelTriad = {currentPixel, prevPixel, nextPixel};
-        auto* border = followBorder(imageBuffer, width, startRow, endRow, startCol, endCol,pixelTriad);
-        if (isBorderClosed(border)) {
-            edgeList.closedBorders->push_back(border);
-        } else {
-            edgeList.openBorders->push_back(border);
-        }
-    }
-    return false;
-}
-
-BorderList littleSuzuki(jbyte* imageBuffer, jint width, int startRow, int endRow, int startCol, int endCol) {
-    BorderList edgeList = {new std::list<std::list<Triad> *>(), new std::list<std::list<Triad> *>()};
+BorderList getStartBorders(Triad* triadBuffer, const jbyte* const imageBuffer, const int size, const int startRow, const int endRow, const int startCol, const int endCol) {
+    BorderList borderList {new std::list<Border>(), new std::list<Border>()};
     for (int row = startRow; row < endRow; row++) {
         for (int col = startCol; col < endCol; col++) {
-            if (imageBuffer[row * width + col] == 0) {
-                continue;
-            }
-            // Check left triad if it has not already been followed
-            if (checkTriad(imageBuffer, width, startRow, endRow, startCol, endCol, row, col, edgeList, LEFT_MASK, left)) {
-                continue;
-            }
-            // Check up triad if it has not already been followed
-            if (checkTriad(imageBuffer, width, startRow, endRow, startCol, endCol, row, col, edgeList, UP_MASK, up)) {
-                continue;
-            }
-            // Check right triad if it has not already been followed
-            if (checkTriad(imageBuffer, width, startRow, endRow, startCol, endCol, row, col, edgeList, RIGHT_MASK, right)) {
-                continue;
-            }
-            // Check down triad if it has not already been followed
-            if (checkTriad(imageBuffer, width, startRow, endRow, startCol, endCol, row, col, edgeList, DOWN_MASK, down)) {
-                continue;
+            for (int triad = 0; triad < 4; triad++) {
+                Triad& localTriad = triadBuffer[row * size * 4 + col * 4 + triad];
+                if (localTriad.isValid && !localTriad.hasBeenFollowed) {
+                    if (localTriad.nextPixelGeneral == nullptr) {
+                        // Single-pixel border
+                        borderList.closedBorders->emplace_back(Border {&localTriad, &localTriad});
+                    } else {
+                        // Follow border, linking up Triad pointers as we go
+                        localTriad.hasBeenFollowed = true;
+                        Border currentBorder = {&localTriad};
+                        Triad* currentTriad = &localTriad;
+                        int currentTriadIndex = triad;
+                        while (true) {
+                            Triad* nextTriad = currentTriad->nextPixelGeneral;
+                            int nextTriadIndex = 0;
+                            while (true) {
+                                if (nextTriad->isValid && nextTriad->prevPixelGeneral + currentTriadIndex == currentTriad) {
+                                    // nextTriad points to the next pixel in the border we're currently following
+                                    currentTriad->nextPixelSpecific = nextTriad;
+                                    nextTriad->prevPixelSpecific = currentTriad;
+                                    break;
+                                } else {
+                                    nextTriad++;
+                                    nextTriadIndex++;
+                                }
+                            }
+                            if (nextTriad == &localTriad) {
+                                // We're back to the start!
+                                currentBorder.endTriad = currentTriad;
+                                borderList.closedBorders->push_back(currentBorder);
+                                // Don't even need to set the iterators because they won't be used
+                                break;
+                            } else if (nextTriad->currentPixel.row < startRow
+                                    || nextTriad->currentPixel.row >= endRow
+                                    || nextTriad->currentPixel.col < startCol
+                                    || nextTriad->currentPixel.col >= endCol) {
+                                // Border goes out of this section. Follow it the opposite direction.
+                                currentBorder.endTriad = currentTriad;
+                                // Follow border, linking up Triad pointers as we go
+                                localTriad.hasBeenFollowed = true;
+                                currentTriad = &localTriad;
+                                currentTriadIndex = triad;
+                                while (true) {
+                                    Triad* prevTriad = currentTriad->prevPixelGeneral;
+                                    int prevTriadIndex = 0;
+                                    while (true) {
+                                        if (prevTriad->isValid && prevTriad->nextPixelGeneral + currentTriadIndex == currentTriad) {
+                                            // nextTriad points to the next pixel in the border we're currently following
+                                            currentTriad->prevPixelSpecific = prevTriad;
+                                            prevTriad->nextPixelSpecific = currentTriad;
+                                            break;
+                                        } else {
+                                            prevTriad++;
+                                            prevTriadIndex++;
+                                        }
+                                    }
+                                    // Impossible to close the loop if the other end has already left the section
+                                    if (prevTriad->currentPixel.row < startRow
+                                               || prevTriad->currentPixel.row >= endRow
+                                               || prevTriad->currentPixel.col < startCol
+                                               || prevTriad->currentPixel.col >= endCol) {
+                                        // We found the other end of the border. Add it to the list
+                                        currentBorder.startTriad = currentTriad;
+                                        auto borderIter = borderList.openBorders->insert(borderList.openBorders->end(), currentBorder);
+                                        currentBorder.startTriad->border = borderIter;
+                                        currentBorder.endTriad->border = borderIter;
+                                        break;
+                                    } else {
+                                        prevTriad->hasBeenFollowed = true;
+                                        currentTriad = prevTriad;
+                                        currentTriadIndex = prevTriadIndex;
+                                    }
+                                }
+                                break;
+                            } else {
+                                nextTriad->hasBeenFollowed = true;
+                                currentTriad = nextTriad;
+                                currentTriadIndex = nextTriadIndex;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    return edgeList;
+    return borderList;
 }
 
-BorderList joinBorders(BorderList list1, BorderList list2) {
-    // We'll operate in-place on the first list and add the second list to it
+void joinBorders(BorderList list1, BorderList list2, const int startRow, const int endRow, const int startCol, const int endCol, bool isJoiningHorizontally) {
     list1.closedBorders->splice(list1.closedBorders->end(), *list2.closedBorders);
-    // Join any open borders in list 2 with anything they can join with in list 1
-    for (auto border2Iter = list2.openBorders->begin(); border2Iter != list2.openBorders->end();)
-    {
-        bool matchesWithBorder = false;
-        for (auto border1Iter = list1.openBorders->begin(); border1Iter != list1.openBorders->end(); border1Iter++) {
-            if ((*border1Iter)->back().pointsTo((*border2Iter)->front())) {
-                matchesWithBorder = true;
-                (*border1Iter)->splice((*border1Iter)->end(), **border2Iter);
-                delete *border2Iter;
-                border2Iter = list2.openBorders->erase(border2Iter);
-                if ((*border1Iter)->back().pointsTo((*border1Iter)->front())) {
-                    (*border1Iter)->push_back((*border1Iter)->front());
-                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), border1Iter);
+    list1.openBorders->splice(list1.openBorders->end(), *list2.openBorders);
+    for (auto borderIter = list1.openBorders->begin(); borderIter != list1.openBorders->end();) {
+        if (isJoiningHorizontally) {
+            int midCol = (startCol + endCol) / 2;
+            if ((borderIter->endTriad->currentPixel.col == midCol - 1 && borderIter->endTriad->nextPixelSpecific->currentPixel.col == midCol
+                 || borderIter->endTriad->currentPixel.col == midCol && borderIter->endTriad->nextPixelSpecific->currentPixel.col == midCol - 1)
+                && (borderIter->endTriad->currentPixel.row < endRow && borderIter->endTriad->currentPixel.row >= startRow
+                    && borderIter->endTriad->nextPixelSpecific->currentPixel.row < endRow && borderIter->endTriad->nextPixelSpecific->currentPixel.row >= startRow)) {
+                // Both parts of the border are in the current region. We can join them, no further questions asked
+                auto nextPartOfBorderIter = borderIter->endTriad->nextPixelSpecific->border;
+                borderIter->endTriad = nextPartOfBorderIter->endTriad;
+                borderIter->endTriad->border = borderIter;
+                list1.openBorders->erase(nextPartOfBorderIter);
+                // Check if the border is now closed
+                if (borderIter->endTriad->pointsTo(borderIter->startTriad)) {
+                    auto nextBorder = std::next(borderIter);
+                    list1.closedBorders->splice(list1.closedBorders->end(), *list1.openBorders, borderIter);
+                    borderIter = nextBorder;
                 }
-                break;
-            } else if ((*border2Iter)->back().pointsTo((*border1Iter)->front())) {
-                matchesWithBorder = true;
-                (*border1Iter)->splice((*border1Iter)->begin(), **border2Iter);
-                delete *border2Iter;
-                border2Iter = list2.openBorders->erase(border2Iter);
-                if ((*border1Iter)->back().pointsTo((*border1Iter)->front())) {
-                    (*border1Iter)->push_back((*border1Iter)->front());
-                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), border1Iter);
+            } else {
+                borderIter++;
+            }
+        } else {
+            int midRow = (startRow + endRow) / 2;
+            if ((borderIter->endTriad->currentPixel.row == midRow - 1 && borderIter->endTriad->nextPixelSpecific->currentPixel.row == midRow
+                || borderIter->endTriad->currentPixel.row == midRow && borderIter->endTriad->nextPixelSpecific->currentPixel.row == midRow - 1)
+                && (borderIter->endTriad->currentPixel.col < endCol && borderIter->endTriad->currentPixel.col >= startCol
+                && borderIter->endTriad->nextPixelSpecific->currentPixel.col < endCol && borderIter->endTriad->nextPixelSpecific->currentPixel.col >= startCol)) {
+                // Both parts of the border are in the current region. We can join them, no further questions asked
+                auto nextPartOfBorderIter = borderIter->endTriad->nextPixelSpecific->border;
+                borderIter->endTriad = nextPartOfBorderIter->endTriad;
+                borderIter->endTriad->border = borderIter;
+                list1.openBorders->erase(nextPartOfBorderIter);
+                // Check if the border is now closed
+                if (borderIter->endTriad->pointsTo(borderIter->startTriad)) {
+                    auto nextBorder = std::next(borderIter);
+                    list1.closedBorders->splice(list1.closedBorders->end(), *list1.openBorders, borderIter);
+                    borderIter = nextBorder;
                 }
-                break;
+            } else {
+                borderIter++;
             }
         }
-        if (!matchesWithBorder) {
-            auto oldBorder2Iter = border2Iter;
-            border2Iter++;
-            list1.openBorders->splice(list1.openBorders->end(), *(list2.openBorders), oldBorder2Iter);
-        }
     }
-    // Joining borders may have resulted in new borders that can be joined. Check them all
-    for (auto borderToCheck = list1.openBorders->begin(); borderToCheck != list1.openBorders->end();) {
-        bool needToRecheckBorder = false;
-        for (auto borderToCheckAgainstIter = std::next(borderToCheck); borderToCheckAgainstIter != list1.openBorders->end(); borderToCheckAgainstIter++) {
-            if ((*borderToCheck)->back().pointsTo((*borderToCheckAgainstIter)->front())) {
-                (*borderToCheck)->splice((*borderToCheck)->end(), **borderToCheckAgainstIter);
-                delete *borderToCheckAgainstIter;
-                list1.openBorders->erase(borderToCheckAgainstIter);
-                if ((*borderToCheck)->back().pointsTo((*borderToCheck)->front())) {
-                    auto oldBorderToCheck = borderToCheck;
-                    oldBorderToCheck++;
-                    (*borderToCheck)->push_back((*borderToCheck)->front()); // Close the border
-                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), borderToCheck);
-                    borderToCheck = oldBorderToCheck;
-                }
-                needToRecheckBorder = true;
-                break;
-            } else if ((*borderToCheckAgainstIter)->back().pointsTo((*borderToCheck)->front())) {
-                (*borderToCheck)->splice((*borderToCheck)->begin(), **borderToCheckAgainstIter);
-                delete *borderToCheckAgainstIter;
-                list1.openBorders->erase(borderToCheckAgainstIter);
-                if ((*borderToCheck)->back().pointsTo((*borderToCheck)->front())) {
-                    auto oldBorderToCheck = borderToCheck;
-                    oldBorderToCheck++;
-                    (*borderToCheck)->push_back((*borderToCheck)->front()); // Close the border
-                    list1.closedBorders->splice(list1.closedBorders->end(), *(list1.openBorders), borderToCheck);
-                    borderToCheck = oldBorderToCheck;
-                }
-                needToRecheckBorder = true;
-                break;
-            }
-        }
-        if (!needToRecheckBorder) {
-            borderToCheck++;
-        }
-    }
-    return list1;
 }
 
 #define START_BLOCK_SIZE 4
 
 BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
     const int startingNumBlocks = size / START_BLOCK_SIZE;
+    // 3-D array of dimensions size × size × 4,
+    // where the first index is the row, the second index is the column,
+    // and the third index is the cross-pixel corresponding to this triad.
+    auto* triadBuffer = new Triad[size * size * 4]();
+    connectTriads(triadBuffer, imageBuffer, size);
     BorderList joinedBorders[startingNumBlocks][startingNumBlocks];
     // Fill starting blocks with border lists
     for (int i = 0; i < startingNumBlocks; i++) {
         for (int j = 0; j < startingNumBlocks; j++) {
-            joinedBorders[i][j] = littleSuzuki(
+            joinedBorders[i][j] = getStartBorders(
+                    triadBuffer,
                     imageBuffer,
                     size,
                     i * START_BLOCK_SIZE,
@@ -372,9 +382,14 @@ BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
         if (willJoinHorizontally) {
             for (int i = 0; i < startingNumBlocks; i += verticalStride) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride * 2) {
-                    joinedBorders[i][j] = joinBorders(
+                    joinBorders(
                             joinedBorders[i][j],
-                            joinedBorders[i][j + horizontalStride]
+                            joinedBorders[i][j + horizontalStride],
+                            i * START_BLOCK_SIZE,
+                            (i + verticalStride) * START_BLOCK_SIZE,
+                            j * START_BLOCK_SIZE,
+                            (j + horizontalStride * 2) * START_BLOCK_SIZE,
+                            true
                             );
                     assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
                     delete joinedBorders[i][j + horizontalStride].closedBorders;
@@ -389,8 +404,15 @@ BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
         } else {
             for (int i = 0; i < startingNumBlocks; i += verticalStride * 2) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride) {
-                    joinedBorders[i][j] = joinBorders(joinedBorders[i][j],
-                                                      joinedBorders[i + verticalStride][j]);
+                    joinBorders(
+                            joinedBorders[i][j],
+                            joinedBorders[i + verticalStride][j],
+                            i * START_BLOCK_SIZE,
+                            (i + verticalStride * 2) * START_BLOCK_SIZE,
+                            j * START_BLOCK_SIZE,
+                            (j + horizontalStride) * START_BLOCK_SIZE,
+                            false
+                            );
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
                     delete joinedBorders[i + verticalStride][j].closedBorders;
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
@@ -459,16 +481,19 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const BorderList& edgeList, d
             return nullptr;
         }
 
-        for(auto& triad : *edge) {
+        for(Triad* triad = edge.startTriad; true; triad = triad->nextPixelSpecific) {
             // Now, we have object created by Pixel(i, i)
-            int row = triad.currentPixel.row;
-            int col = triad.currentPixel.col;
+            int row = triad->currentPixel.row;
+            int col = triad->currentPixel.col;
             jobject pixelValue = env->NewObject(pixelClass, pixelConstructorID, row, col);
             if(pixelValue == nullptr) {
                 return nullptr;
             }
 
             env->CallBooleanMethod(innerVector, addMethodID, pixelValue);
+            if (triad == edge.endTriad) {
+                break;
+            }
         }
 
         env->CallBooleanMethod(outerVector, addMethodID, innerVector);
@@ -500,12 +525,6 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFindEfficien
     assert(borderList.openBorders->empty());
     env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
     jobject retVal = getJavaEdgeListFromBorderList(env, borderList, timeMillis);
-    for (auto border : *(borderList.closedBorders)) {
-        delete border;
-    }
-    for (auto border : *(borderList.openBorders)) {
-        delete border;
-    }
     delete borderList.closedBorders;
     delete borderList.openBorders;
     return retVal;
