@@ -15,7 +15,11 @@ import kotlin.math.pow
 
 class EdgeDetectionActivity : AppCompatActivity() {
 
-    class EdgeDetectionResult(val edges: Vector<Vector<Pixel>>, val timeSetupMillis: Double, val timeJoinMillis: Double, val timeMillis: Double)
+    class EdgeDetectionResult(val edges: Vector<Vector<Pixel>>,
+                              val timeSetupMillis: Double,
+                              val timeSuzukiMillis: Double,
+                              val timeJoinMillis: Double,
+                              val timeMillis: Double)
 
     class Pixel(val row: Int, val col: Int)
 
@@ -66,7 +70,7 @@ class EdgeDetectionActivity : AppCompatActivity() {
                 }
             }
             val edgeResult = if (useGarciaMolla) {
-                garciaMollaEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
+                garciaMollaEdgeFindParallel(imageArray, imageWidthPadded, imageHeightPadded, 2)
             } else {
                 suzukiEdgeFind(imageArray, imageWidthPadded, imageHeightPadded)
             }
@@ -83,7 +87,10 @@ class EdgeDetectionActivity : AppCompatActivity() {
             binding.image.setImageBitmap(scaledEdgeImageBitmap)
 
             binding.edgeCount.text = "Edge count: ${edgeList.size}"
-            binding.time.text = "Total time: ${edgeResult.timeMillis}ms\nSetup time: ${edgeResult.timeSetupMillis}ms\nJoin time: ${edgeResult.timeJoinMillis}ms"
+            binding.time.text = "Total time: ${edgeResult.timeMillis}ms\n" +
+                    "Setup time: ${edgeResult.timeSetupMillis}ms\n" +
+                    "Suzuki time: ${edgeResult.timeSuzukiMillis}ms\n" +
+                    "Join time: ${edgeResult.timeJoinMillis}ms"
         }
     }
 
@@ -92,6 +99,8 @@ class EdgeDetectionActivity : AppCompatActivity() {
     external fun suzukiEdgeFind(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
 
     external fun garciaMollaEdgeFind(image: ByteArray, width: Int, height: Int): EdgeDetectionResult
+
+    external fun garciaMollaEdgeFindParallel(image: ByteArray, width: Int, height: Int, lgSqrtNumThreads: Int): EdgeDetectionResult
 
     companion object {
         // Used to load the 'ee451finalproject' library on application startup.

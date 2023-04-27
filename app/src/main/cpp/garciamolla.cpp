@@ -135,9 +135,26 @@ struct Pixel scan(jbyte* imageBuffer, jint width, Pixel centerPixel, Direction s
     return {0, 0}; // No pixel found: (0, 0) cannot possibly be a 1-pixel
 }
 
-void connectTriads(Triad* triadBuffer, jbyte* imageBuffer, const int size) {
-    for (int currentPixelRow = 1; currentPixelRow < size - 1; currentPixelRow++) {
-        for (int currentPixelColumn = 1; currentPixelColumn < size - 1; currentPixelColumn++) {
+struct ConnectTriadsInput {
+    Triad* triadBuffer;
+    jbyte* imageBuffer;
+    int size;
+    int startRow;
+    int endRow;
+    int startCol;
+    int endCol;
+};
+
+void connectTriads(ConnectTriadsInput* input) {
+    Triad* triadBuffer = input->triadBuffer;
+    jbyte* imageBuffer = input->imageBuffer;
+    const int size = input->size;
+    const int startRow = input->startRow;
+    const int endRow = input->endRow;
+    const int startCol = input->startCol;
+    const int endCol = input->endCol;
+    for (int currentPixelRow = startRow; currentPixelRow < endRow; currentPixelRow++) {
+        for (int currentPixelColumn = startCol; currentPixelColumn < endCol; currentPixelColumn++) {
             if (imageBuffer[currentPixelRow * size + currentPixelColumn] == 0) {
                 // Ignore 0-pixels
                 continue;
@@ -207,7 +224,25 @@ void connectTriads(Triad* triadBuffer, jbyte* imageBuffer, const int size) {
     }
 }
 
-BorderList getStartBorders(Triad* triadBuffer, const jbyte* const imageBuffer, const int size, const int startRow, const int endRow, const int startCol, const int endCol) {
+struct GetStartBordersInput {
+    Triad* triadBuffer;
+    jbyte* imageBuffer;
+    int size;
+    int startRow;
+    int endRow;
+    int startCol;
+    int endCol;
+    BorderList result;
+};
+
+void getStartBorders(GetStartBordersInput* getStartBordersInput) {
+    Triad* triadBuffer = getStartBordersInput->triadBuffer;
+    const jbyte* const imageBuffer = getStartBordersInput->imageBuffer;
+    const int size = getStartBordersInput->size;
+    const int startRow = getStartBordersInput->startRow;
+    const int endRow = getStartBordersInput->endRow;
+    const int startCol = getStartBordersInput->startCol;
+    const int endCol = getStartBordersInput->endCol;
     BorderList borderList {new std::list<Border>(), new std::list<Border>()};
     for (int row = startRow; row < endRow; row++) {
         for (int col = startCol; col < endCol; col++) {
@@ -296,10 +331,27 @@ BorderList getStartBorders(Triad* triadBuffer, const jbyte* const imageBuffer, c
             }
         }
     }
-    return borderList;
+    getStartBordersInput->result = borderList;
 }
 
-void joinBorders(BorderList list1, BorderList list2, const int startRow, const int endRow, const int startCol, const int endCol, bool isJoiningHorizontally) {
+struct JoinBordersInput {
+    BorderList list1;
+    BorderList list2;
+    int startRow;
+    int endRow;
+    int startCol;
+    int endCol;
+    bool isJoiningHorizontally;
+};
+
+void joinBorders(JoinBordersInput* joinBordersInput) {
+    BorderList list1 = joinBordersInput->list1;
+    BorderList list2 = joinBordersInput->list2;
+    const int startRow = joinBordersInput->startRow;
+    const int endRow = joinBordersInput->endRow;
+    const int startCol = joinBordersInput->startCol;
+    const int endCol = joinBordersInput->endCol;
+    bool isJoiningHorizontally = joinBordersInput->isJoiningHorizontally;
     list1.closedBorders->splice(list1.closedBorders->end(), *list2.closedBorders);
     list1.openBorders->splice(list1.openBorders->end(), *list2.openBorders);
     for (auto borderIter = list1.openBorders->begin(); borderIter != list1.openBorders->end();) {
@@ -352,6 +404,7 @@ void joinBorders(BorderList list1, BorderList list2, const int startRow, const i
 struct GarciaMollaResult {
     BorderList result;
     double timeSetupMillis;
+    double timeSuzukiMillis;
     double timeJoinMills;
     double timeTotalMillis;
 };
@@ -364,24 +417,21 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
     // where the first index is the row, the second index is the column,
     // and the third index is the cross-pixel corresponding to this triad.
     auto* triadBuffer = new Triad[size * size * 4]();
-    connectTriads(triadBuffer, imageBuffer, size);
+    ConnectTriadsInput connectTriadsInput { triadBuffer, imageBuffer, size, 0, size, 0, size };
+    connectTriads(&connectTriadsInput);
+    struct timespec endSetupTime{};
+    clock_gettime(CLOCK_REALTIME, &endSetupTime);
     BorderList joinedBorders[startingNumBlocks][startingNumBlocks];
     // Fill starting blocks with border lists
     for (int i = 0; i < startingNumBlocks; i++) {
         for (int j = 0; j < startingNumBlocks; j++) {
-            joinedBorders[i][j] = getStartBorders(
-                    triadBuffer,
-                    imageBuffer,
-                    size,
-                    i * START_BLOCK_SIZE,
-                    (i + 1) * START_BLOCK_SIZE,
-                    j * START_BLOCK_SIZE,
-                    (j + 1) * START_BLOCK_SIZE
-            );
+            GetStartBordersInput getStartBordersInput { triadBuffer, imageBuffer, size, i * START_BLOCK_SIZE, (i + 1) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + 1) * START_BLOCK_SIZE };
+            getStartBorders(&getStartBordersInput);
+            joinedBorders[i][j] = getStartBordersInput.result;
         }
     }
-    struct timespec endSetupTime{};
-    clock_gettime(CLOCK_REALTIME, &endSetupTime);
+    struct timespec endSuzukiTime{};
+    clock_gettime(CLOCK_REALTIME, &endSuzukiTime);
     bool willJoinHorizontally = true;
     int currentBlockWidth = START_BLOCK_SIZE;
     int currentBlockHeight = START_BLOCK_SIZE;
@@ -393,15 +443,8 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
         if (willJoinHorizontally) {
             for (int i = 0; i < startingNumBlocks; i += verticalStride) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride * 2) {
-                    joinBorders(
-                            joinedBorders[i][j],
-                            joinedBorders[i][j + horizontalStride],
-                            i * START_BLOCK_SIZE,
-                            (i + verticalStride) * START_BLOCK_SIZE,
-                            j * START_BLOCK_SIZE,
-                            (j + horizontalStride * 2) * START_BLOCK_SIZE,
-                            true
-                    );
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i][j + horizontalStride], i * START_BLOCK_SIZE, (i + verticalStride) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride * 2) * START_BLOCK_SIZE, true};
+                    joinBorders(&joinBordersInput);
                     assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
                     delete joinedBorders[i][j + horizontalStride].closedBorders;
                     assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
@@ -415,15 +458,8 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
         } else {
             for (int i = 0; i < startingNumBlocks; i += verticalStride * 2) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride) {
-                    joinBorders(
-                            joinedBorders[i][j],
-                            joinedBorders[i + verticalStride][j],
-                            i * START_BLOCK_SIZE,
-                            (i + verticalStride * 2) * START_BLOCK_SIZE,
-                            j * START_BLOCK_SIZE,
-                            (j + horizontalStride) * START_BLOCK_SIZE,
-                            false
-                    );
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i + verticalStride][j], i * START_BLOCK_SIZE, (i + verticalStride * 2) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride) * START_BLOCK_SIZE, false };
+                    joinBorders(&joinBordersInput);
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
                     delete joinedBorders[i + verticalStride][j].closedBorders;
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
@@ -439,6 +475,98 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
     struct timespec endJoinTime{};
     clock_gettime(CLOCK_REALTIME, &endJoinTime);
     double timeSetupMillis = (endSetupTime.tv_sec - startSetupTime.tv_sec + (endSetupTime.tv_nsec - startSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    double timeSuzukiMillis = (endSuzukiTime.tv_sec - endSetupTime.tv_sec + (endSuzukiTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    double timeJoinMillis = (endJoinTime.tv_sec - endSetupTime.tv_sec + (endJoinTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    return {joinedBorders[0][0], timeSetupMillis, timeSuzukiMillis, timeJoinMillis };
+}
+
+GarciaMollaResult findBordersInRectangleParallel(jbyte* imageBuffer, const int size, const int lgSqrtNumThreads) {
+    const int numParallelSections = (1 << lgSqrtNumThreads); // The number in one dimension only
+    const int parallelBlockSize = size >> lgSqrtNumThreads;
+    struct timespec startSetupTime{};
+    clock_gettime(CLOCK_REALTIME, &startSetupTime);
+    // 3-D array of dimensions size × size × 4,
+    // where the first index is the row, the second index is the column,
+    // and the third index is the cross-pixel corresponding to this triad.
+    auto* triadBuffer = new Triad[size * size * 4]();
+    ConnectTriadsInput connectTriadsInput[numParallelSections][numParallelSections];
+    pthread_t connectPthreads[numParallelSections][numParallelSections];
+    for (int i = 0; i < numParallelSections; i++) {
+        for (int j = 0; j < numParallelSections; j++) {
+            connectTriadsInput[i][j] = { triadBuffer, imageBuffer, size, i * parallelBlockSize, (i + 1) * parallelBlockSize, j * parallelBlockSize, (j + 1) * parallelBlockSize };
+            pthread_create(&(connectPthreads[i][j]), nullptr, reinterpret_cast<void *(*)(void *)>(connectTriads), &(connectTriadsInput[i][j]));
+        }
+    }
+    for (int i = 0; i < numParallelSections; i++) {
+        for (int j = 0; j < numParallelSections; j++) {
+            pthread_join(connectPthreads[i][j], nullptr);
+        }
+    }
+    struct timespec endSetupTime{};
+    clock_gettime(CLOCK_REALTIME, &endSetupTime);
+    BorderList joinedBorders[numParallelSections][numParallelSections];
+    // Fill starting blocks with border lists
+    GetStartBordersInput getStartBordersInput[numParallelSections][numParallelSections];
+    pthread_t startPthreads[numParallelSections][numParallelSections];
+    for (int i = 0; i < numParallelSections; i++) {
+        for (int j = 0; j < numParallelSections; j++) {
+            getStartBordersInput[i][j] = { triadBuffer, imageBuffer, size, i * parallelBlockSize, (i + 1) * parallelBlockSize, j * parallelBlockSize, (j + 1) * parallelBlockSize };
+            pthread_create(&(startPthreads[i][j]), nullptr, reinterpret_cast<void *(*)(void *)>(getStartBorders), &(getStartBordersInput[i][j]));
+        }
+    }
+    for (int i = 0; i < numParallelSections; i++) {
+        for (int j = 0; j < numParallelSections; j++) {
+            pthread_join(startPthreads[i][j], nullptr);
+            joinedBorders[i][j] = getStartBordersInput[i][j].result;
+        }
+    }
+    struct timespec endSuzukiTime{};
+    clock_gettime(CLOCK_REALTIME, &endSuzukiTime);
+    bool willJoinHorizontally = true;
+    int currentBlockWidth = parallelBlockSize;
+    int currentBlockHeight = parallelBlockSize;
+    int horizontalStride = 1;
+    int verticalStride = 1;
+    int currentNumHorizontalBlocks = numParallelSections;
+    int currentNumVerticalBlocks = numParallelSections;
+    while (currentBlockWidth < size || currentBlockHeight < size) {
+        // This section could be parallelized in principal but on the CPU it's so short there's no point
+        if (willJoinHorizontally) {
+            for (int i = 0; i < numParallelSections; i += verticalStride) {
+                for (int j = 0; j < numParallelSections; j += horizontalStride * 2) {
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j],joinedBorders[i][j + horizontalStride],i * parallelBlockSize,(i + verticalStride) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride * 2) * parallelBlockSize,true };
+                    joinBorders(&joinBordersInput);
+                    assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
+                    delete joinedBorders[i][j + horizontalStride].closedBorders;
+                    assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
+                    delete joinedBorders[i][j + horizontalStride].openBorders;
+                }
+            }
+            currentBlockWidth *= 2;
+            horizontalStride *= 2;
+            currentNumHorizontalBlocks /= 2;
+            willJoinHorizontally = false;
+        } else {
+            for (int i = 0; i < numParallelSections; i += verticalStride * 2) {
+                for (int j = 0; j < numParallelSections; j += horizontalStride) {
+                    JoinBordersInput joinBordersInput {joinedBorders[i][j],joinedBorders[i + verticalStride][j],i * parallelBlockSize,(i + verticalStride * 2) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride) * parallelBlockSize,false };
+                    joinBorders(&joinBordersInput);
+                    assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
+                    delete joinedBorders[i + verticalStride][j].closedBorders;
+                    assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
+                    delete joinedBorders[i + verticalStride][j].openBorders;
+                }
+            }
+            currentBlockHeight *= 2;
+            verticalStride *= 2;
+            currentNumVerticalBlocks /= 2;
+            willJoinHorizontally = true;
+        }
+    }
+    struct timespec endJoinTime{};
+    clock_gettime(CLOCK_REALTIME, &endJoinTime);
+    double timeSetupMillis = (endSetupTime.tv_sec - startSetupTime.tv_sec + (endSetupTime.tv_nsec - startSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    double timeSuzukiMillis = (endSuzukiTime.tv_sec - endSetupTime.tv_sec + (endSuzukiTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     double timeJoinMillis = (endJoinTime.tv_sec - endSetupTime.tv_sec + (endJoinTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     return {joinedBorders[0][0], timeSetupMillis, timeJoinMillis };
 }
@@ -460,7 +588,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const GarciaMollaResult& bord
     }
 
     jmethodID edgeDetectionResultConstructorID = env->GetMethodID(edgeDetectionResultClass, "<init>",
-                                                                  "(Ljava/util/Vector;DDD)V");
+                                                                  "(Ljava/util/Vector;DDDD)V");
     if(edgeDetectionResultConstructorID == nullptr) {
         return nullptr;
     }
@@ -515,7 +643,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const GarciaMollaResult& bord
 
     }
 
-    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, borderResult.timeSetupMillis, borderResult.timeJoinMills, borderResult.timeTotalMillis);
+    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, borderResult.timeSetupMillis, borderResult.timeSuzukiMillis, borderResult.timeJoinMills, borderResult.timeTotalMillis);
 
     env->DeleteLocalRef(edgeDetectionResultClass);
     env->DeleteLocalRef(vectorClass);
@@ -534,6 +662,26 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFind(JNIEnv 
     struct timespec startTime{};
     clock_gettime(CLOCK_REALTIME, &startTime);
     GarciaMollaResult result = findBordersInRectangle(imageBuffer, width);
+    struct timespec endTime{};
+    clock_gettime(CLOCK_REALTIME, &endTime);
+    double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
+    result.timeTotalMillis = timeMillis;
+    assert(result.result.openBorders->empty());
+    env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
+    jobject retVal = getJavaEdgeListFromBorderList(env, result);
+    delete result.result.closedBorders;
+    delete result.result.openBorders;
+    return retVal;
+}
+extern "C"
+JNIEXPORT jobject JNICALL
+Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFindParallel(JNIEnv *env, jobject thiz, jbyteArray image, jint width, jint height,
+                                                                                 jint lg_num_threads) {
+    assert(width == height);
+    jbyte* imageBuffer = env->GetByteArrayElements(image, nullptr);
+    struct timespec startTime{};
+    clock_gettime(CLOCK_REALTIME, &startTime);
+    GarciaMollaResult result = findBordersInRectangleParallel(imageBuffer, width, lg_num_threads);
     struct timespec endTime{};
     clock_gettime(CLOCK_REALTIME, &endTime);
     double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
