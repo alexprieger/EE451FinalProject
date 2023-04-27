@@ -15,7 +15,7 @@ import kotlin.math.pow
 
 class EdgeDetectionActivity : AppCompatActivity() {
 
-    class EdgeDetectionResult(val edges: Vector<Vector<Pixel>>, val timeMillis: Double)
+    class EdgeDetectionResult(val edges: Vector<Vector<Pixel>>, val timeSetupMillis: Double, val timeJoinMillis: Double, val timeMillis: Double)
 
     class Pixel(val row: Int, val col: Int)
 
@@ -83,7 +83,7 @@ class EdgeDetectionActivity : AppCompatActivity() {
             binding.image.setImageBitmap(scaledEdgeImageBitmap)
 
             binding.edgeCount.text = "Edge count: ${edgeList.size}"
-            binding.time.text = "Time: ${edgeResult.timeMillis}ms"
+            binding.time.text = "Total time: ${edgeResult.timeMillis}ms\nSetup time: ${edgeResult.timeSetupMillis}ms\nJoin time: ${edgeResult.timeJoinMillis}ms"
         }
     }
 

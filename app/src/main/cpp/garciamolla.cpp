@@ -349,7 +349,16 @@ void joinBorders(BorderList list1, BorderList list2, const int startRow, const i
 
 #define START_BLOCK_SIZE 4
 
-BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
+struct GarciaMollaResult {
+    BorderList result;
+    double timeSetupMillis;
+    double timeJoinMills;
+    double timeTotalMillis;
+};
+
+GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
+    struct timespec startSetupTime{};
+    clock_gettime(CLOCK_REALTIME, &startSetupTime);
     const int startingNumBlocks = size / START_BLOCK_SIZE;
     // 3-D array of dimensions size × size × 4,
     // where the first index is the row, the second index is the column,
@@ -371,6 +380,8 @@ BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
             );
         }
     }
+    struct timespec endSetupTime{};
+    clock_gettime(CLOCK_REALTIME, &endSetupTime);
     bool willJoinHorizontally = true;
     int currentBlockWidth = START_BLOCK_SIZE;
     int currentBlockHeight = START_BLOCK_SIZE;
@@ -425,10 +436,14 @@ BorderList findBordersInRectangle(jbyte* imageBuffer, int size) {
             willJoinHorizontally = true;
         }
     }
-    return joinedBorders[0][0];
+    struct timespec endJoinTime{};
+    clock_gettime(CLOCK_REALTIME, &endJoinTime);
+    double timeSetupMillis = (endSetupTime.tv_sec - startSetupTime.tv_sec + (endSetupTime.tv_nsec - startSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    double timeJoinMillis = (endJoinTime.tv_sec - endSetupTime.tv_sec + (endJoinTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
+    return {joinedBorders[0][0], timeSetupMillis, timeJoinMillis };
 }
 
-jobject getJavaEdgeListFromBorderList(JNIEnv *env, const BorderList& edgeList, double time) {
+jobject getJavaEdgeListFromBorderList(JNIEnv *env, const GarciaMollaResult& borderResult) {
     jclass edgeDetectionResultClass = env->FindClass("com/ajp/ee451finalproject/EdgeDetectionActivity$EdgeDetectionResult");
     if(edgeDetectionResultClass == nullptr) {
         return nullptr;
@@ -445,7 +460,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const BorderList& edgeList, d
     }
 
     jmethodID edgeDetectionResultConstructorID = env->GetMethodID(edgeDetectionResultClass, "<init>",
-                                                                  "(Ljava/util/Vector;D)V");
+                                                                  "(Ljava/util/Vector;DDD)V");
     if(edgeDetectionResultConstructorID == nullptr) {
         return nullptr;
     }
@@ -473,7 +488,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const BorderList& edgeList, d
         return nullptr;
     }
 
-    for(auto& edge : *(edgeList.closedBorders)) {
+    for(auto& edge : *(borderResult.result.closedBorders)) {
 
         // Inner vector
         jobject innerVector = env->NewObject(vectorClass, vectorConstructorID);
@@ -500,7 +515,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const BorderList& edgeList, d
 
     }
 
-    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, time);
+    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, borderResult.timeSetupMillis, borderResult.timeJoinMills, borderResult.timeTotalMillis);
 
     env->DeleteLocalRef(edgeDetectionResultClass);
     env->DeleteLocalRef(vectorClass);
@@ -518,14 +533,15 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFind(JNIEnv 
     jbyte* imageBuffer = env->GetByteArrayElements(image, nullptr);
     struct timespec startTime{};
     clock_gettime(CLOCK_REALTIME, &startTime);
-    BorderList borderList = findBordersInRectangle(imageBuffer, width);
+    GarciaMollaResult result = findBordersInRectangle(imageBuffer, width);
     struct timespec endTime{};
     clock_gettime(CLOCK_REALTIME, &endTime);
     double timeMillis = (endTime.tv_sec - startTime.tv_sec + (endTime.tv_nsec - startTime.tv_nsec) / 1000000000.0) * 1000.0;
-    assert(borderList.openBorders->empty());
+    result.timeTotalMillis = timeMillis;
+    assert(result.result.openBorders->empty());
     env->ReleaseByteArrayElements(image, imageBuffer, JNI_ABORT);
-    jobject retVal = getJavaEdgeListFromBorderList(env, borderList, timeMillis);
-    delete borderList.closedBorders;
-    delete borderList.openBorders;
+    jobject retVal = getJavaEdgeListFromBorderList(env, result);
+    delete result.result.closedBorders;
+    delete result.result.openBorders;
     return retVal;
 }

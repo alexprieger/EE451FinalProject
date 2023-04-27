@@ -131,7 +131,7 @@ jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<P
     }
 
     jmethodID edgeDetectionResultConstructorID = env->GetMethodID(edgeDetectionResultClass, "<init>",
-                                                                  "(Ljava/util/Vector;D)V");
+                                                                  "(Ljava/util/Vector;DDD)V");
     if(edgeDetectionResultConstructorID == nullptr) {
         return nullptr;
     }
@@ -181,7 +181,7 @@ jobject getJavaEdgeListFromEdgeList(JNIEnv *env, const std::vector<std::vector<P
 
     }
 
-    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, time);
+    jobject result = env->NewObject(edgeDetectionResultClass, edgeDetectionResultConstructorID, outerVector, 0.0, 0.0, time);
 
     env->DeleteLocalRef(edgeDetectionResultClass);
     env->DeleteLocalRef(vectorClass);
