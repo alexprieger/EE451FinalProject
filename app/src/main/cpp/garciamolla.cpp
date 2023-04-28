@@ -34,22 +34,22 @@ struct Triad {
     Pixel currentPixel;
     // The "general" pointers point to the FIRST (left) triad in the set of other-pixel triads
     // Initialized by connectTriads
-    struct Triad* prevPixelGeneral;
-    // If isValid is true and nextPixelGeneral is a null pointer, this pixel is isolated
-    struct Triad* nextPixelGeneral; // Direction points towards currentPixel
+    int prevPixelGeneral;
+    // If isValid is true and nextPixelGeneral is -1, this pixel is isolated
+    int nextPixelGeneral; // Direction points towards currentPixel
     // The "general" pointers point to the next triad in the border
     // Initialized by getStartBorders
-    struct Triad* prevPixelSpecific;
-    struct Triad* nextPixelSpecific;
+    int prevPixelSpecific;
+    int nextPixelSpecific;
     std::list<Border>::iterator border;
     // False if the corresponding cross pixel is not black, or if this triad would be duplicated by another
     bool isValid;
     bool hasBeenFollowed;
-
-    bool pointsTo(struct Triad* otherTriad) const {
-        return nextPixelSpecific == otherTriad && otherTriad->prevPixelSpecific == this;
-    }
 };
+
+bool pointsTo(Triad* triadBuffer, int fromTriad, int toTriad) {
+    return triadBuffer[fromTriad].nextPixelSpecific == toTriad && triadBuffer[toTriad].prevPixelSpecific == fromTriad;
+}
 
 struct Border {
     struct Triad* startTriad;
@@ -174,16 +174,16 @@ void connectTriads(ConnectTriadsInput* input) {
                 if (leftTriadNext == Pixel{0, 0}) {
                     // Single, isolated pixel. Mark it as such
                     localPixelTriadBuffer[CROSS_LEFT].isValid = true;
-                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = nullptr;
+                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = -1;
                     localPixelTriadBuffer[CROSS_UP].isValid = false;
                     localPixelTriadBuffer[CROSS_RIGHT].isValid = false;
                     localPixelTriadBuffer[CROSS_DOWN].isValid = false;
                     continue;
                 } else {
                     localPixelTriadBuffer[CROSS_LEFT].isValid = true;
-                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = triadBuffer + leftTriadNext.row * size * 4 + leftTriadNext.col * 4;
+                    localPixelTriadBuffer[CROSS_LEFT].nextPixelGeneral = leftTriadNext.row * size * 4 + leftTriadNext.col * 4;
                     Pixel leftTriadPrev = scan(imageBuffer, size, currentPixel, left, true);
-                    localPixelTriadBuffer[CROSS_LEFT].prevPixelGeneral = triadBuffer + leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
+                    localPixelTriadBuffer[CROSS_LEFT].prevPixelGeneral = leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
                 }
             }
             // Get up triad
@@ -194,9 +194,9 @@ void connectTriads(ConnectTriadsInput* input) {
                 Pixel upTriadNext = scan(imageBuffer, size, currentPixel, up, false);
                 // Note thta we don't need to check if it's an isolated pixel because we would have found that out in the left triad
                 localPixelTriadBuffer[CROSS_UP].isValid = true;
-                localPixelTriadBuffer[CROSS_UP].nextPixelGeneral = triadBuffer + upTriadNext.row * size * 4 + upTriadNext.col * 4;
+                localPixelTriadBuffer[CROSS_UP].nextPixelGeneral = upTriadNext.row * size * 4 + upTriadNext.col * 4;
                 Pixel leftTriadPrev = scan(imageBuffer, size, currentPixel, up, true);
-                localPixelTriadBuffer[CROSS_UP].prevPixelGeneral = triadBuffer + leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
+                localPixelTriadBuffer[CROSS_UP].prevPixelGeneral = leftTriadPrev.row * size * 4 + leftTriadPrev.col * 4;
             }
             // Get right triad
             if (imageBuffer[currentPixelRow * size + currentPixelColumn + 1] != 0 || imageBuffer[currentPixelRow * size + currentPixelColumn] & RIGHT_MASK) {
@@ -205,9 +205,9 @@ void connectTriads(ConnectTriadsInput* input) {
             } else {
                 Pixel rightTriadNext = scan(imageBuffer, size, currentPixel, right, false);
                 localPixelTriadBuffer[CROSS_RIGHT].isValid = true;
-                localPixelTriadBuffer[CROSS_RIGHT].nextPixelGeneral = triadBuffer + rightTriadNext.row * size * 4 + rightTriadNext.col * 4;
+                localPixelTriadBuffer[CROSS_RIGHT].nextPixelGeneral = rightTriadNext.row * size * 4 + rightTriadNext.col * 4;
                 Pixel rightTriadPrev = scan(imageBuffer, size, currentPixel, right, true);
-                localPixelTriadBuffer[CROSS_RIGHT].prevPixelGeneral = triadBuffer + rightTriadPrev.row * size * 4 + rightTriadPrev.col * 4;
+                localPixelTriadBuffer[CROSS_RIGHT].prevPixelGeneral = rightTriadPrev.row * size * 4 + rightTriadPrev.col * 4;
             }
             // Get down triad
             if (imageBuffer[(currentPixelRow + 1) * size + currentPixelColumn] != 0 || imageBuffer[currentPixelRow * size + currentPixelColumn] & DOWN_MASK) {
@@ -216,9 +216,9 @@ void connectTriads(ConnectTriadsInput* input) {
             } else {
                 Pixel downTriadNext = scan(imageBuffer, size, currentPixel, down, false);
                 localPixelTriadBuffer[CROSS_DOWN].isValid = true;
-                localPixelTriadBuffer[CROSS_DOWN].nextPixelGeneral = triadBuffer + downTriadNext.row * size * 4 + downTriadNext.col * 4;
+                localPixelTriadBuffer[CROSS_DOWN].nextPixelGeneral = downTriadNext.row * size * 4 + downTriadNext.col * 4;
                 Pixel downTriadPrev = scan(imageBuffer, size, currentPixel, down, true);
-                localPixelTriadBuffer[CROSS_DOWN].prevPixelGeneral = triadBuffer + downTriadPrev.row * size * 4 + downTriadPrev.col * 4;
+                localPixelTriadBuffer[CROSS_DOWN].prevPixelGeneral = downTriadPrev.row * size * 4 + downTriadPrev.col * 4;
             }
         }
     }
@@ -247,55 +247,55 @@ void getStartBorders(GetStartBordersInput* getStartBordersInput) {
     for (int row = startRow; row < endRow; row++) {
         for (int col = startCol; col < endCol; col++) {
             for (int triad = 0; triad < 4; triad++) {
-                Triad& localTriad = triadBuffer[row * size * 4 + col * 4 + triad];
-                if (localTriad.isValid && !localTriad.hasBeenFollowed) {
-                    if (localTriad.nextPixelGeneral == nullptr) {
+                int localTriad = row * size * 4 + col * 4 + triad;
+                if (triadBuffer[localTriad].isValid && !triadBuffer[localTriad].hasBeenFollowed) {
+                    if (triadBuffer[localTriad].nextPixelGeneral == -1) {
                         // Single-pixel border
-                        borderList.closedBorders->emplace_back(Border {&localTriad, &localTriad});
+                        borderList.closedBorders->emplace_back(Border {triadBuffer + localTriad, triadBuffer + localTriad});
                     } else {
                         // Follow border, linking up Triad pointers as we go
-                        localTriad.hasBeenFollowed = true;
-                        Border currentBorder = {&localTriad};
-                        Triad* currentTriad = &localTriad;
+                        triadBuffer[localTriad].hasBeenFollowed = true;
+                        Border currentBorder = {triadBuffer + localTriad};
+                        int currentTriad = row * size * 4 + col * 4 + triad;
                         int currentTriadIndex = triad;
                         while (true) {
-                            Triad* nextTriad = currentTriad->nextPixelGeneral;
+                            int nextTriad = triadBuffer[currentTriad].nextPixelGeneral;
                             int nextTriadIndex = 0;
                             while (true) {
-                                if (nextTriad->isValid && nextTriad->prevPixelGeneral + currentTriadIndex == currentTriad) {
+                                if (triadBuffer[nextTriad].isValid && triadBuffer[nextTriad].prevPixelGeneral + currentTriadIndex == currentTriad) {
                                     // nextTriad points to the next pixel in the border we're currently following
-                                    currentTriad->nextPixelSpecific = nextTriad;
-                                    nextTriad->prevPixelSpecific = currentTriad;
+                                    triadBuffer[currentTriad].nextPixelSpecific = nextTriad;
+                                    triadBuffer[nextTriad].prevPixelSpecific = currentTriad;
                                     break;
                                 } else {
                                     nextTriad++;
                                     nextTriadIndex++;
                                 }
                             }
-                            if (nextTriad == &localTriad) {
+                            if (nextTriad == localTriad) {
                                 // We're back to the start!
-                                currentBorder.endTriad = currentTriad;
+                                currentBorder.endTriad = triadBuffer + currentTriad;
                                 borderList.closedBorders->push_back(currentBorder);
                                 // Don't even need to set the iterators because they won't be used
                                 break;
-                            } else if (nextTriad->currentPixel.row < startRow
-                                       || nextTriad->currentPixel.row >= endRow
-                                       || nextTriad->currentPixel.col < startCol
-                                       || nextTriad->currentPixel.col >= endCol) {
+                            } else if (triadBuffer[nextTriad].currentPixel.row < startRow
+                                       || triadBuffer[nextTriad].currentPixel.row >= endRow
+                                       || triadBuffer[nextTriad].currentPixel.col < startCol
+                                       || triadBuffer[nextTriad].currentPixel.col >= endCol) {
                                 // Border goes out of this section. Follow it the opposite direction.
-                                currentBorder.endTriad = currentTriad;
+                                currentBorder.endTriad = triadBuffer + currentTriad;
                                 // Follow border, linking up Triad pointers as we go
-                                localTriad.hasBeenFollowed = true;
-                                currentTriad = &localTriad;
+                                triadBuffer[localTriad].hasBeenFollowed = true;
+                                currentTriad = localTriad;
                                 currentTriadIndex = triad;
                                 while (true) {
-                                    Triad* prevTriad = currentTriad->prevPixelGeneral;
+                                    int prevTriad = triadBuffer[currentTriad].prevPixelGeneral;
                                     int prevTriadIndex = 0;
                                     while (true) {
-                                        if (prevTriad->isValid && prevTriad->nextPixelGeneral + currentTriadIndex == currentTriad) {
+                                        if (triadBuffer[prevTriad].isValid && triadBuffer[prevTriad].nextPixelGeneral + currentTriadIndex == currentTriad) {
                                             // nextTriad points to the next pixel in the border we're currently following
-                                            currentTriad->prevPixelSpecific = prevTriad;
-                                            prevTriad->nextPixelSpecific = currentTriad;
+                                            triadBuffer[currentTriad].prevPixelSpecific = prevTriad;
+                                            triadBuffer[prevTriad].nextPixelSpecific = currentTriad;
                                             break;
                                         } else {
                                             prevTriad++;
@@ -303,25 +303,25 @@ void getStartBorders(GetStartBordersInput* getStartBordersInput) {
                                         }
                                     }
                                     // Impossible to close the loop if the other end has already left the section
-                                    if (prevTriad->currentPixel.row < startRow
-                                        || prevTriad->currentPixel.row >= endRow
-                                        || prevTriad->currentPixel.col < startCol
-                                        || prevTriad->currentPixel.col >= endCol) {
+                                    if (triadBuffer[prevTriad].currentPixel.row < startRow
+                                        || triadBuffer[prevTriad].currentPixel.row >= endRow
+                                        || triadBuffer[prevTriad].currentPixel.col < startCol
+                                        || triadBuffer[prevTriad].currentPixel.col >= endCol) {
                                         // We found the other end of the border. Add it to the list
-                                        currentBorder.startTriad = currentTriad;
+                                        currentBorder.startTriad = triadBuffer + currentTriad;
                                         auto borderIter = borderList.openBorders->insert(borderList.openBorders->end(), currentBorder);
                                         currentBorder.startTriad->border = borderIter;
                                         currentBorder.endTriad->border = borderIter;
                                         break;
                                     } else {
-                                        prevTriad->hasBeenFollowed = true;
+                                        triadBuffer[prevTriad].hasBeenFollowed = true;
                                         currentTriad = prevTriad;
                                         currentTriadIndex = prevTriadIndex;
                                     }
                                 }
                                 break;
                             } else {
-                                nextTriad->hasBeenFollowed = true;
+                                triadBuffer[nextTriad].hasBeenFollowed = true;
                                 currentTriad = nextTriad;
                                 currentTriadIndex = nextTriadIndex;
                             }
@@ -337,6 +337,7 @@ void getStartBorders(GetStartBordersInput* getStartBordersInput) {
 struct JoinBordersInput {
     BorderList list1;
     BorderList list2;
+    Triad* triadBuffer;
     int startRow;
     int endRow;
     int startCol;
@@ -347,6 +348,7 @@ struct JoinBordersInput {
 void joinBorders(JoinBordersInput* joinBordersInput) {
     BorderList list1 = joinBordersInput->list1;
     BorderList list2 = joinBordersInput->list2;
+    Triad* triadBuffer = joinBordersInput->triadBuffer;
     const int startRow = joinBordersInput->startRow;
     const int endRow = joinBordersInput->endRow;
     const int startCol = joinBordersInput->startCol;
@@ -357,17 +359,17 @@ void joinBorders(JoinBordersInput* joinBordersInput) {
     for (auto borderIter = list1.openBorders->begin(); borderIter != list1.openBorders->end();) {
         if (isJoiningHorizontally) {
             int midCol = (startCol + endCol) / 2;
-            if ((borderIter->endTriad->currentPixel.col == midCol - 1 && borderIter->endTriad->nextPixelSpecific->currentPixel.col == midCol
-                 || borderIter->endTriad->currentPixel.col == midCol && borderIter->endTriad->nextPixelSpecific->currentPixel.col == midCol - 1)
+            if ((borderIter->endTriad->currentPixel.col == midCol - 1 && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.col == midCol
+                 || borderIter->endTriad->currentPixel.col == midCol && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.col == midCol - 1)
                 && (borderIter->endTriad->currentPixel.row < endRow && borderIter->endTriad->currentPixel.row >= startRow
-                    && borderIter->endTriad->nextPixelSpecific->currentPixel.row < endRow && borderIter->endTriad->nextPixelSpecific->currentPixel.row >= startRow)) {
+                    && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.row < endRow && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.row >= startRow)) {
                 // Both parts of the border are in the current region. We can join them, no further questions asked
-                auto nextPartOfBorderIter = borderIter->endTriad->nextPixelSpecific->border;
+                auto nextPartOfBorderIter = triadBuffer[borderIter->endTriad->nextPixelSpecific].border;
                 borderIter->endTriad = nextPartOfBorderIter->endTriad;
                 borderIter->endTriad->border = borderIter;
                 list1.openBorders->erase(nextPartOfBorderIter);
                 // Check if the border is now closed
-                if (borderIter->endTriad->pointsTo(borderIter->startTriad)) {
+                if (pointsTo(triadBuffer, borderIter->endTriad - triadBuffer, borderIter->startTriad - triadBuffer)) {
                     auto nextBorder = std::next(borderIter);
                     list1.closedBorders->splice(list1.closedBorders->end(), *list1.openBorders, borderIter);
                     borderIter = nextBorder;
@@ -377,17 +379,17 @@ void joinBorders(JoinBordersInput* joinBordersInput) {
             }
         } else {
             int midRow = (startRow + endRow) / 2;
-            if ((borderIter->endTriad->currentPixel.row == midRow - 1 && borderIter->endTriad->nextPixelSpecific->currentPixel.row == midRow
-                 || borderIter->endTriad->currentPixel.row == midRow && borderIter->endTriad->nextPixelSpecific->currentPixel.row == midRow - 1)
+            if ((borderIter->endTriad->currentPixel.row == midRow - 1 && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.row == midRow
+                 || borderIter->endTriad->currentPixel.row == midRow && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.row == midRow - 1)
                 && (borderIter->endTriad->currentPixel.col < endCol && borderIter->endTriad->currentPixel.col >= startCol
-                    && borderIter->endTriad->nextPixelSpecific->currentPixel.col < endCol && borderIter->endTriad->nextPixelSpecific->currentPixel.col >= startCol)) {
+                    && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.col < endCol && triadBuffer[borderIter->endTriad->nextPixelSpecific].currentPixel.col >= startCol)) {
                 // Both parts of the border are in the current region. We can join them, no further questions asked
-                auto nextPartOfBorderIter = borderIter->endTriad->nextPixelSpecific->border;
+                auto nextPartOfBorderIter = triadBuffer[borderIter->endTriad->nextPixelSpecific].border;
                 borderIter->endTriad = nextPartOfBorderIter->endTriad;
                 borderIter->endTriad->border = borderIter;
                 list1.openBorders->erase(nextPartOfBorderIter);
                 // Check if the border is now closed
-                if (borderIter->endTriad->pointsTo(borderIter->startTriad)) {
+                if (pointsTo(triadBuffer, borderIter->endTriad - triadBuffer, borderIter->startTriad - triadBuffer)) {
                     auto nextBorder = std::next(borderIter);
                     list1.closedBorders->splice(list1.closedBorders->end(), *list1.openBorders, borderIter);
                     borderIter = nextBorder;
@@ -403,6 +405,7 @@ void joinBorders(JoinBordersInput* joinBordersInput) {
 
 struct GarciaMollaResult {
     BorderList result;
+    Triad* triadBuffer;
     double timeSetupMillis;
     double timeSuzukiMillis;
     double timeJoinMills;
@@ -443,7 +446,7 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
         if (willJoinHorizontally) {
             for (int i = 0; i < startingNumBlocks; i += verticalStride) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride * 2) {
-                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i][j + horizontalStride], i * START_BLOCK_SIZE, (i + verticalStride) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride * 2) * START_BLOCK_SIZE, true};
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i][j + horizontalStride], triadBuffer, i * START_BLOCK_SIZE, (i + verticalStride) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride * 2) * START_BLOCK_SIZE, true};
                     joinBorders(&joinBordersInput);
                     assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
                     delete joinedBorders[i][j + horizontalStride].closedBorders;
@@ -458,7 +461,7 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
         } else {
             for (int i = 0; i < startingNumBlocks; i += verticalStride * 2) {
                 for (int j = 0; j < startingNumBlocks; j += horizontalStride) {
-                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i + verticalStride][j], i * START_BLOCK_SIZE, (i + verticalStride * 2) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride) * START_BLOCK_SIZE, false };
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j], joinedBorders[i + verticalStride][j], triadBuffer, i * START_BLOCK_SIZE, (i + verticalStride * 2) * START_BLOCK_SIZE, j * START_BLOCK_SIZE, (j + horizontalStride) * START_BLOCK_SIZE, false };
                     joinBorders(&joinBordersInput);
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
                     delete joinedBorders[i + verticalStride][j].closedBorders;
@@ -477,7 +480,7 @@ GarciaMollaResult findBordersInRectangle(jbyte* imageBuffer, int size) {
     double timeSetupMillis = (endSetupTime.tv_sec - startSetupTime.tv_sec + (endSetupTime.tv_nsec - startSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     double timeSuzukiMillis = (endSuzukiTime.tv_sec - endSetupTime.tv_sec + (endSuzukiTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     double timeJoinMillis = (endJoinTime.tv_sec - endSetupTime.tv_sec + (endJoinTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
-    return {joinedBorders[0][0], timeSetupMillis, timeSuzukiMillis, timeJoinMillis };
+    return {joinedBorders[0][0], triadBuffer, timeSetupMillis, timeSuzukiMillis, timeJoinMillis };
 }
 
 GarciaMollaResult findBordersInRectangleParallel(jbyte* imageBuffer, const int size, const int lgSqrtNumThreads) {
@@ -534,7 +537,7 @@ GarciaMollaResult findBordersInRectangleParallel(jbyte* imageBuffer, const int s
         if (willJoinHorizontally) {
             for (int i = 0; i < numParallelSections; i += verticalStride) {
                 for (int j = 0; j < numParallelSections; j += horizontalStride * 2) {
-                    JoinBordersInput joinBordersInput { joinedBorders[i][j],joinedBorders[i][j + horizontalStride],i * parallelBlockSize,(i + verticalStride) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride * 2) * parallelBlockSize,true };
+                    JoinBordersInput joinBordersInput { joinedBorders[i][j],joinedBorders[i][j + horizontalStride],triadBuffer, i * parallelBlockSize,(i + verticalStride) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride * 2) * parallelBlockSize,true };
                     joinBorders(&joinBordersInput);
                     assert(joinedBorders[i][j + horizontalStride].closedBorders->empty());
                     delete joinedBorders[i][j + horizontalStride].closedBorders;
@@ -549,7 +552,7 @@ GarciaMollaResult findBordersInRectangleParallel(jbyte* imageBuffer, const int s
         } else {
             for (int i = 0; i < numParallelSections; i += verticalStride * 2) {
                 for (int j = 0; j < numParallelSections; j += horizontalStride) {
-                    JoinBordersInput joinBordersInput {joinedBorders[i][j],joinedBorders[i + verticalStride][j],i * parallelBlockSize,(i + verticalStride * 2) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride) * parallelBlockSize,false };
+                    JoinBordersInput joinBordersInput {joinedBorders[i][j],joinedBorders[i + verticalStride][j],triadBuffer, i * parallelBlockSize,(i + verticalStride * 2) * parallelBlockSize,j * parallelBlockSize,(j + horizontalStride) * parallelBlockSize,false };
                     joinBorders(&joinBordersInput);
                     assert(joinedBorders[i + verticalStride][j].closedBorders->empty());
                     delete joinedBorders[i + verticalStride][j].closedBorders;
@@ -568,7 +571,7 @@ GarciaMollaResult findBordersInRectangleParallel(jbyte* imageBuffer, const int s
     double timeSetupMillis = (endSetupTime.tv_sec - startSetupTime.tv_sec + (endSetupTime.tv_nsec - startSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     double timeSuzukiMillis = (endSuzukiTime.tv_sec - endSetupTime.tv_sec + (endSuzukiTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
     double timeJoinMillis = (endJoinTime.tv_sec - endSetupTime.tv_sec + (endJoinTime.tv_nsec - endSetupTime.tv_nsec) / 1000000000.0) * 1000.0;
-    return {joinedBorders[0][0], timeSetupMillis, timeJoinMillis };
+    return {joinedBorders[0][0], triadBuffer, timeSetupMillis, timeJoinMillis };
 }
 
 jobject getJavaEdgeListFromBorderList(JNIEnv *env, const GarciaMollaResult& borderResult) {
@@ -624,7 +627,7 @@ jobject getJavaEdgeListFromBorderList(JNIEnv *env, const GarciaMollaResult& bord
             return nullptr;
         }
 
-        for(Triad* triad = edge.startTriad; true; triad = triad->nextPixelSpecific) {
+        for(Triad* triad = edge.startTriad; true; triad = borderResult.triadBuffer + triad->nextPixelSpecific) {
             // Now, we have object created by Pixel(i, i)
             int row = triad->currentPixel.row;
             int col = triad->currentPixel.col;
@@ -671,6 +674,7 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFind(JNIEnv 
     jobject retVal = getJavaEdgeListFromBorderList(env, result);
     delete result.result.closedBorders;
     delete result.result.openBorders;
+    delete result.triadBuffer;
     return retVal;
 }
 extern "C"
@@ -691,5 +695,6 @@ Java_com_ajp_ee451finalproject_EdgeDetectionActivity_garciaMollaEdgeFindParallel
     jobject retVal = getJavaEdgeListFromBorderList(env, result);
     delete result.result.closedBorders;
     delete result.result.openBorders;
+    delete result.triadBuffer;
     return retVal;
 }
