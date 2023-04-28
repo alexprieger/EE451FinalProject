@@ -12,162 +12,76 @@
         android:layout_height="wrap_content">
 
         <Button
-            android:id="@+id/aruco_button"
+            android:id="@+id/size_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/aruco"
-            android:onClick="onClick"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/big_dots_button"
+            android:id="@+id/use_garcia_molla_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/big_dots"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/aruco_button"
+            app:layout_constraintTop_toBottomOf="@id/size_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/careful_edges_button"
+            android:id="@+id/num_threads_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/careful_edges"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/big_dots_button"
+            app:layout_constraintTop_toBottomOf="@id/use_garcia_molla_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/diamonds_button"
+            android:id="@+id/black_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/diamonds"
+            android:text="@string/black"
             android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/careful_edges_button"
+            app:layout_constraintTop_toBottomOf="@id/num_threads_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/direction_button"
+            android:id="@+id/checkerboard_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/direction"
+            android:text="@string/checkerboard"
             android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/diamonds_button"
+            app:layout_constraintTop_toBottomOf="@id/black_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/donut_button"
+            android:id="@+id/horizontal_lines_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/donut"
+            android:text="@string/horizontal_lines"
             android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/direction_button"
+            app:layout_constraintTop_toBottomOf="@id/checkerboard_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/dots_button"
+            android:id="@+id/real_image_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/dots"
+            android:text="@string/real_image"
             android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/donut_button"
+            app:layout_constraintTop_toBottomOf="@id/horizontal_lines_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button
-            android:id="@+id/input_button"
+            android:id="@+id/vertical_lines_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/input"
+            android:text="@string/vertical_lines"
             android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/dots_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/mesh_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/mesh"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/input_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/qr_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/qr"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/mesh_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/qr_tilt_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/qr_tilt"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/qr_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/small_edges_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/small_edges"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/qr_tilt_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/square_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/square"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/small_edges_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/tic_tac_toe_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/tic_tac_toe"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/square_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/waffle_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/waffle"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/tic_tac_toe_button"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
-
-        <Button
-            android:id="@+id/white_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/white"
-            android:onClick="onClick"
-            app:layout_constraintTop_toBottomOf="@id/waffle_button"
+            app:layout_constraintTop_toBottomOf="@id/real_image_button"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"/>
 
