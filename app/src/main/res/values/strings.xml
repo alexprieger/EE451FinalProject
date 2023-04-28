@@ -6,4 +6,6 @@
     <string name="horizontal_lines">horizontalLines</string>
     <string name="real_image">realImage</string>
     <string name="vertical_lines">verticalLines</string>
+    <string name="big_dots">bigDots</string>
+    <string name="mesh">mesh</string>
 </resources>

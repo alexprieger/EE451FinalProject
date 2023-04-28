@@ -15,7 +15,7 @@ class MainActivity : AppCompatActivity(), OnClickListener {
     private lateinit var binding: ActivityMainBinding
 
     companion object {
-        private val sizeArray = intArrayOf(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048)
+        private val sizeArray = intArrayOf(4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096)
         private val numThreadsArray = intArrayOf(0, 1, 2)
     }
 
